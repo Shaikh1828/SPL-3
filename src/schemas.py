@@ -219,7 +219,7 @@ class ImageDetectionResponse(BaseModel):
 class ReportGenerateRequest(BaseModel):
     """Generate report request."""
 
-    format: str = Field(..., regex="^(pdf|csv|json)$")
+    format: str = Field(..., pattern="^(pdf|csv|json)$")
 
 
 # Error Response

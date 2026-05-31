@@ -379,3 +379,12 @@ Cache health check passes
 Generated: 2026-05-25  
 System: Archery Scoring System v1.0.0  
 Status: Production Ready
+
+
+
+docker compose build
+docker compose up -d
+curl http://localhost:8000/health
+
+
+python -m uvicorn src.main:app --host 0.0.0.0 --port 8000

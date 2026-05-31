@@ -8,8 +8,8 @@ Provides:
 """
 
 from typing import Optional
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi import Depends, HTTPException, status, Request
+from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
 
 from src.database import get_db
@@ -20,7 +20,7 @@ security = HTTPBearer()
 
 
 def get_current_user(
-    db: Session = Depends(get_db), credentials: HTTPAuthCredentials = Depends(security)
+    db: Session = Depends(get_db), credentials = Depends(security)
 ) -> User:
     """
     Get current authenticated user from JWT token.
@@ -61,7 +61,7 @@ def get_current_user(
 
 
 def get_optional_user(
-    db: Session = Depends(get_db), credentials: Optional[HTTPAuthCredentials] = Depends(security)
+    db: Session = Depends(get_db), credentials = Depends(security)
 ) -> Optional[User]:
     """
     Get current user if authenticated, otherwise None.

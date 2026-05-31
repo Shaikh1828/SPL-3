@@ -11,7 +11,6 @@ Handles:
 
 from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional
 
 import structlog
 from fastapi import FastAPI, Request, status
@@ -26,6 +25,7 @@ from src.config import (
 )
 from src.database import dispose_engine, verify_database_connectivity
 from src.cache import cache_manager
+from src.thread_pool import set_executor, shutdown_executor
 from src.api import (
     auth_router,
     tournament_router,
@@ -40,9 +40,6 @@ from src.api.websocket import router as websocket_router
 from src.middleware import RateLimitMiddleware, ErrorHandlingMiddleware
 
 logger = structlog.get_logger()
-
-# Global thread pool executor for image processing
-thread_pool_executor: Optional[ThreadPoolExecutor] = None
 
 
 @asynccontextmanager
@@ -59,16 +56,15 @@ async def lifespan(app: FastAPI):
     - Dispose database engine
     - Shutdown thread pool
     """
-    global thread_pool_executor
-
     # Startup
     logger.info("app_startup_starting")
 
     # Initialize thread pool for image processing (Pattern #10)
-    thread_pool_executor = ThreadPoolExecutor(
+    executor = ThreadPoolExecutor(
         max_workers=settings.threadpool_base_workers,
         thread_name_prefix="archery-pool",
     )
+    set_executor(executor)
     logger.info("thread_pool_initialized", workers=settings.threadpool_base_workers)
 
     # Verify cache connectivity
@@ -87,9 +83,8 @@ async def lifespan(app: FastAPI):
     logger.info("app_shutdown_starting")
 
     # Shutdown thread pool
-    if thread_pool_executor:
-        thread_pool_executor.shutdown(wait=True)
-        logger.info("thread_pool_shutdown")
+    shutdown_executor()
+    logger.info("thread_pool_shutdown")
 
     # Dispose database connections
     dispose_engine()

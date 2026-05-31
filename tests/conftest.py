@@ -13,7 +13,8 @@ import structlog
 from datetime import datetime
 
 from src.main import app
-from src.database import Base, get_db
+from src.database import get_db
+from src.models.base import Base
 from src.cache import cache_manager
 from src.models.user import User
 from src.models.tournament import Tournament, Session as TournamentSession

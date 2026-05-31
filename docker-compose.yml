@@ -27,12 +27,6 @@ services:
         condition: service_healthy
     networks:
       - archery_network
-    command: >
-      sh -c "
-      poetry install &&
-      python -m scripts.seed_data &&
-      uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
-      "
 
   # PostgreSQL database service
   db:

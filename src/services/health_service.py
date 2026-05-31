@@ -20,7 +20,7 @@ import structlog
 from src.database import SessionLocal, verify_database_connectivity
 from src.cache import cache_manager
 from src.config import settings
-from src.main import thread_pool_executor
+from src.thread_pool import get_executor
 
 logger = structlog.get_logger()
 
@@ -191,18 +191,19 @@ class HealthService:
             Status dictionary with pool info
         """
         try:
-            if thread_pool_executor is None:
+            executor = get_executor()
+            if executor is None:
                 return {
                     "status": "down",
                     "message": "ThreadPool not initialized",
                     "timestamp": datetime.utcnow().isoformat(),
                 }
 
-            active_count = thread_pool_executor._work_queue.qsize()  # Approximate
-            max_workers = thread_pool_executor._max_workers
+            active_count = executor._work_queue.qsize()  # Approximate
+            max_workers = executor._max_workers
 
             # Check if pool is responsive
-            health_future = thread_pool_executor.submit(lambda: True)
+            health_future = executor.submit(lambda: True)
             try:
                 health_future.result(timeout=1)
                 is_responsive = True

@@ -14,7 +14,7 @@ from src.services.scoring_service import ScoringService
 from src.services.camera_service import CameraService
 from src.services.health_service import HealthService
 from src.models.user import User
-from src.models.scoring import Score
+from src.models.scoring import Score, SessionArcher
 
 
 # ============================================================================

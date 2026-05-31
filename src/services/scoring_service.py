@@ -11,7 +11,7 @@ Story coverage: US-2.2 (scoring rules), US-3.1 (real-time updates), US-3.2 (arro
 """
 
 import time
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError
 import structlog
