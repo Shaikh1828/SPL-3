@@ -10,6 +10,9 @@ RUN apt-get update && apt-get install -y \
     g++ \
     make \
     libpq-dev \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install venv and upgrade pip
@@ -43,7 +46,9 @@ RUN /build/.venv/bin/pip install --default-timeout=600 --retries 5 \
     pytest==7.4.3 \
     pytest-asyncio==0.23.2 \
     pytest-cov==4.1.0 \
-    aiosqlite==0.19.0
+    aiosqlite==0.19.0 \
+    numpy==1.24.3 \
+    opencv-python==4.8.1.78
 
 # ============================================================================
 # Runtime stage

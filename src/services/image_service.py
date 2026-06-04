@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Image processing service for arrow detection and storage management.
 

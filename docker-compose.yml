@@ -18,7 +18,10 @@ services:
       - JWT_SECRET=${JWT_SECRET:-dev-secret-key-change-in-production}
       - STORAGE_PATH=/storage
     volumes:
-      - .:/app
+      - ./src:/app/src
+      - ./scripts:/app/scripts
+      - ./tests:/app/tests
+      - ./alembic:/app/alembic
       - storage_volume:/storage
     depends_on:
       db:
