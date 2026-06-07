@@ -1,0 +1,132 @@
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+@layer base {
+  :root {
+    --bg-primary: #0a0f1e;
+    --bg-card: #0f1629;
+    --bg-card-hover: #151e36;
+    --border: #1c2847;
+    --gold: #f59e0b;
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-muted: #475569;
+  }
+
+  * {
+    @apply border-navy-700;
+  }
+
+  html {
+    @apply bg-navy-900 text-slate-100;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  body {
+    @apply bg-navy-900 text-slate-100 antialiased;
+  }
+
+  ::-webkit-scrollbar {
+    @apply w-1.5;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-navy-900;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-navy-600 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-navy-500;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-navy-800/60 backdrop-blur-sm border border-navy-700/50 rounded-xl;
+  }
+
+  .glass-card-hover {
+    @apply bg-navy-800/60 backdrop-blur-sm border border-navy-700/50 rounded-xl transition-all duration-200 hover:bg-navy-700/60 hover:border-navy-600/50;
+  }
+
+  .gold-gradient {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+  }
+
+  .gold-text {
+    background: linear-gradient(135deg, #f59e0b, #fcd34d);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .status-connected {
+    @apply text-emerald-400 bg-emerald-400/10 border border-emerald-400/20;
+  }
+
+  .status-disconnected {
+    @apply text-red-400 bg-red-400/10 border border-red-400/20;
+  }
+
+  .status-error {
+    @apply text-orange-400 bg-orange-400/10 border border-orange-400/20;
+  }
+
+  .btn-primary {
+    @apply bg-gold-500 hover:bg-gold-400 text-navy-900 font-semibold px-4 py-2 rounded-lg transition-all duration-200 hover:scale-105 active:scale-95;
+  }
+
+  .btn-ghost {
+    @apply text-slate-400 hover:text-slate-100 hover:bg-navy-700/50 px-3 py-2 rounded-lg transition-all duration-200;
+  }
+
+  .btn-danger {
+    @apply bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 px-4 py-2 rounded-lg transition-all duration-200;
+  }
+
+  .input-dark {
+    @apply bg-navy-800 border border-navy-600 text-slate-100 placeholder-slate-500 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gold-500/50 focus:border-gold-500/50 transition-all duration-200;
+  }
+
+  .score-badge-high {
+    @apply bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs px-2 py-0.5 rounded-full font-medium;
+  }
+
+  .score-badge-medium {
+    @apply bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 text-xs px-2 py-0.5 rounded-full font-medium;
+  }
+
+  .score-badge-low {
+    @apply bg-red-500/20 text-red-400 border border-red-500/30 text-xs px-2 py-0.5 rounded-full font-medium;
+  }
+
+  .zone-x { @apply text-yellow-300 font-bold; }
+  .zone-10 { @apply text-yellow-400; }
+  .zone-9 { @apply text-yellow-500; }
+  .zone-8 { @apply text-red-400; }
+  .zone-7 { @apply text-red-500; }
+  .zone-6 { @apply text-blue-400; }
+  .zone-5 { @apply text-blue-500; }
+  .zone-4 { @apply text-slate-300; }
+  .zone-3 { @apply text-slate-400; }
+  .zone-2 { @apply text-slate-500; }
+  .zone-1 { @apply text-slate-600; }
+  .zone-0 { @apply text-red-600; }
+}
+
+@layer utilities {
+  .animate-in {
+    @apply animate-fade-in;
+  }
+
+  .slide-in {
+    @apply animate-slide-up;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+}
