@@ -99,6 +99,9 @@ async def create_session(
         session = Session(
             tournament_id=tournament_id,
             name=session_data.name,
+            round_number=session_data.round_number,
+            num_lanes=session_data.num_lanes,
+            arrows_per_round=session_data.arrows_per_round,
             status="active",
         )
 
@@ -206,9 +209,11 @@ async def update_session_status(
         old_status = session.status
         session.status = new_status
 
-        if new_status == "completed":
-            from datetime import datetime
-            session.completed_at = datetime.utcnow()
+        from datetime import datetime
+        if new_status == "active":
+            session.start_time = datetime.utcnow()
+        elif new_status == "completed":
+            session.end_time = datetime.utcnow()
 
         db.commit()
         db.refresh(session)
@@ -267,6 +272,31 @@ async def add_archer_to_session(
 
         archer_id = archer_data.get("archer_id")
         archer_name = archer_data.get("archer_name", f"Archer {archer_id}")
+        lane_number = archer_data.get("lane_number")
+
+        # Validate lane_number if provided
+        if lane_number is not None:
+            if lane_number < 1 or lane_number > session.num_lanes:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid lane_number. Must be between 1 and {session.num_lanes}",
+                )
+            
+            # Check if lane is already assigned to another archer
+            lane_taken = (
+                db.query(SessionArcher)
+                .filter(
+                    SessionArcher.session_id == session_id,
+                    SessionArcher.lane_number == lane_number,
+                )
+                .first()
+            )
+            
+            if lane_taken:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Lane {lane_number} is already assigned to another archer",
+                )
 
         # Check if archer already in session
         existing = (
@@ -285,6 +315,7 @@ async def add_archer_to_session(
             session_id=session_id,
             archer_id=archer_id,
             archer_name=archer_name,
+            lane_number=lane_number,
             current_round=1,
             total_score=0,
         )

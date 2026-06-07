@@ -163,6 +163,7 @@ def test_tournament(test_db: Session, test_user: User):
     tournament = Tournament(
         name="Test Tournament",
         location="Test Location",
+        description="Test tournament description",
         start_date=datetime.utcnow(),
         end_date=datetime.utcnow() + timedelta(days=1),
         created_by_user_id=test_user.id,
@@ -181,10 +182,16 @@ def test_session(test_db: Session, test_tournament: Tournament):
 
     Scope: function
     """
+    from datetime import datetime
+    
     session = TournamentSession(
         tournament_id=test_tournament.id,
         name="Test Session",
+        round_number=1,
+        num_lanes=6,
+        arrows_per_round=6,
         status="active",
+        start_time=datetime.utcnow(),
     )
     test_db.add(session)
     test_db.commit()
@@ -204,6 +211,7 @@ def test_session_archer(test_db: Session, test_session: TournamentSession):
         session_id=test_session.id,
         archer_id=1,
         archer_name="Test Archer",
+        lane_number=1,
         current_round=1,
         total_score=0,
     )

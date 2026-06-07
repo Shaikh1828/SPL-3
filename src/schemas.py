@@ -67,6 +67,7 @@ class TournamentCreate(BaseModel):
 
     name: str = Field(..., max_length=200)
     location: str = Field(..., max_length=200)
+    description: Optional[str] = Field(None, max_length=1000)
     start_date: datetime
     end_date: datetime
 
@@ -90,6 +91,9 @@ class SessionCreate(BaseModel):
     """Create session request."""
 
     name: str = Field(..., max_length=200)
+    round_number: int = Field(..., ge=1)
+    num_lanes: int = Field(default=6, ge=1, le=12)
+    arrows_per_round: int = Field(default=6, ge=1, le=12)
 
 
 class SessionResponse(BaseModel):
@@ -98,7 +102,12 @@ class SessionResponse(BaseModel):
     id: int
     tournament_id: int
     name: str
+    round_number: int
+    num_lanes: int
+    arrows_per_round: int
     status: str
+    start_time: Optional[datetime]
+    end_time: Optional[datetime]
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
 
@@ -113,6 +122,7 @@ class SessionArcherResponse(BaseModel):
     session_id: int
     archer_id: int
     archer_name: str
+    lane_number: Optional[int]
     current_round: int
     total_score: int
     created_at: Optional[datetime]

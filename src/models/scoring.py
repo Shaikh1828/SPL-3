@@ -25,6 +25,7 @@ class SessionArcher(Base):
         Integer, nullable=False
     )  # References user but not FK for flexibility
     archer_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    lane_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # Assigned lane for this archer
     current_round: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     total_score: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -52,6 +53,7 @@ class SessionArcher(Base):
             "session_id": self.session_id,
             "archer_id": self.archer_id,
             "archer_name": self.archer_name,
+            "lane_number": self.lane_number,
             "current_round": self.current_round,
             "total_score": self.total_score,
             "created_at": self.created_at.isoformat() if self.created_at else None,

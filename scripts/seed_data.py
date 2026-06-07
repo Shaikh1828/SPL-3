@@ -83,6 +83,7 @@ def seed_tournaments(db: Session, admin_user: User):
         Tournament(
             name="Spring Championship 2026",
             location="Central Park Archery Range",
+            description="Official spring championship tournament",
             start_date=now,
             end_date=now + timedelta(days=3),
             created_by_user_id=admin_user.id,
@@ -90,6 +91,7 @@ def seed_tournaments(db: Session, admin_user: User):
         Tournament(
             name="Summer Qualifier 2026",
             location="Downtown Sports Complex",
+            description="Regional qualifier for summer games",
             start_date=now + timedelta(days=7),
             end_date=now + timedelta(days=10),
             created_by_user_id=admin_user.id,
@@ -118,7 +120,11 @@ def seed_sessions(db: Session, tournaments: list):
             session = TournamentSession(
                 tournament_id=tournament.id,
                 name=f"Session {i+1}",
+                round_number=i + 1,
+                num_lanes=6,
+                arrows_per_round=6,
                 status="active" if i == 0 else "paused",
+                start_time=datetime.utcnow() if i == 0 else None,
             )
             existing = db.query(TournamentSession).filter(
                 TournamentSession.tournament_id == tournament.id,
@@ -152,6 +158,7 @@ def seed_session_archers(db: Session, sessions: list):
                 session_id=session.id,
                 archer_id=archer_id,
                 archer_name=archer_name,
+                lane_number=archer_id,  # Assign to lanes 1-5
                 current_round=1,
                 total_score=0,
             )

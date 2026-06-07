@@ -21,6 +21,7 @@ class Tournament(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)  # Tournament description
     location: Mapped[str] = mapped_column(String(200), nullable=False)
     start_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     end_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -44,6 +45,7 @@ class Tournament(Base):
         return {
             "id": self.id,
             "name": self.name,
+            "description": self.description,
             "location": self.location,
             "start_date": self.start_date.isoformat() if self.start_date else None,
             "end_date": self.end_date.isoformat() if self.end_date else None,
@@ -61,9 +63,18 @@ class Session(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     tournament_id: Mapped[int] = mapped_column(ForeignKey("tournaments.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    round_number: Mapped[int] = mapped_column(Integer, nullable=False)  # Round number within tournament
+    num_lanes: Mapped[int] = mapped_column(Integer, default=6, nullable=False)  # Number of shooting lanes
+    arrows_per_round: Mapped[int] = mapped_column(Integer, default=6, nullable=False)  # Arrows each archer shoots per round
     status: Mapped[str] = mapped_column(
         String(20), default="active", nullable=False
     )  # active, paused, completed
+    start_time: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True  # When session actually started
+    )
+    end_time: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True  # When session actually ended
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, nullable=False
     )
@@ -93,7 +104,12 @@ class Session(Base):
             "id": self.id,
             "tournament_id": self.tournament_id,
             "name": self.name,
+            "round_number": self.round_number,
+            "num_lanes": self.num_lanes,
+            "arrows_per_round": self.arrows_per_round,
             "status": self.status,
+            "start_time": self.start_time.isoformat() if self.start_time else None,
+            "end_time": self.end_time.isoformat() if self.end_time else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
