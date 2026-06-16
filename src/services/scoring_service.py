@@ -79,6 +79,7 @@ class ScoringService:
         zone: int,
         points: int,
         image_id: Optional[str] = None,
+        confidence: Optional[float] = None,
         max_retries: int = 2,
         base_backoff: float = 1.0,
     ) -> Optional[Score]:
@@ -95,6 +96,7 @@ class ScoringService:
             zone: Detected zone (0-10)
             points: Points to award
             image_id: Image file ID
+            confidence: AI detection confidence
             max_retries: Maximum retry attempts
             base_backoff: Base backoff time (exponential)
 
@@ -128,6 +130,7 @@ class ScoringService:
                     zone=zone,
                     points=points,
                     image_id=image_id,
+                    confidence=confidence,
                     validated_by_ai=True if image_id else False,
                 )
 

@@ -163,6 +163,7 @@ class ScoreResponse(BaseModel):
     confidence: Optional[float]
     validated_by_ai: bool
     created_at: Optional[datetime]
+    method: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -171,7 +172,8 @@ class ScoreResponse(BaseModel):
 class ScoreValidateRequest(BaseModel):
     """Validate score request."""
 
-    validated_by_ai: bool
+    validated: Optional[bool] = None
+    validated_by_ai: Optional[bool] = None
 
 
 class LeaderboardItem(BaseModel):
@@ -240,6 +242,14 @@ class ImageDetectionResponse(BaseModel):
     zone: Optional[int]
     confidence: float
     method: str
+
+
+class BatchDirectoryRequest(BaseModel):
+    """Batch directory scoring request."""
+
+    directory_path: str = Field(..., min_length=1)
+    session_archer_id: int
+    round: int = Field(..., ge=1)
 
 
 # Report Schemas

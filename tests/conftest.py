@@ -35,9 +35,11 @@ def test_db():
 
     Scope: function (new DB for each test)
     """
+    from sqlalchemy.pool import StaticPool
     engine = create_engine(
         SQLALCHEMY_TEST_DATABASE_URL,
         connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
     )
     
     # Create tables
@@ -52,7 +54,8 @@ def test_db():
         try:
             yield db
         finally:
-            db.close()
+            # Do not close the shared test session here; it is closed by the test_db fixture cleanup
+            pass
     
     app.dependency_overrides[get_db] = override_get_db
     

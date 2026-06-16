@@ -24,6 +24,7 @@ class TestAuthenticationAPI:
                 "username": "newuser",
                 "email": "new@example.com",
                 "password": "SecurePass123!",
+                "password_confirm": "SecurePass123!",
             },
         )
 
@@ -40,6 +41,7 @@ class TestAuthenticationAPI:
                 "username": "otheruser",
                 "email": "test@example.com",
                 "password": "SecurePass123!",
+                "password_confirm": "SecurePass123!",
             },
         )
 
@@ -169,7 +171,7 @@ class TestSessionAPI:
         """Test creating session."""
         response = test_client.post(
             f"/api/tournaments/{test_tournament.id}/sessions",
-            json={"name": "New Session"},
+            json={"name": "New Session", "round_number": 1},
             headers=auth_headers,
         )
 
@@ -274,6 +276,88 @@ class TestScoreAPI:
         assert response.status_code == 200
         data = response.json()
         assert data["validated_by_ai"] is True
+
+    def test_upload_score_image(
+        self, test_client: TestClient, test_session, test_session_archer, auth_headers
+    ):
+        """Test uploading and scoring a shot image."""
+        mock_image = b"\xff\xd8\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\' \",#\x1c\x1c(7),01444\x1f\'9=82<.342\xff\xc0\x00\x0b\x08\x00\x01\x00\x01\x01\x01\x11\x00\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xbf\x00\xff\xd9"
+        
+        session_id = test_session.id
+        session_archer_id = test_session_archer.id
+        
+        response = test_client.post(
+            f"/api/sessions/{session_id}/scores/upload",
+            data={
+                "session_archer_id": session_archer_id,
+                "round": 1,
+                "arrow_num": 1,
+            },
+            files={"file": ("shot.jpg", mock_image, "image/jpeg")},
+            headers=auth_headers,
+        )
+        
+        assert response.status_code == 201
+        data = response.json()
+        assert "zone" in data
+        assert "points" in data
+        assert "image_id" in data
+
+    def test_batch_score_directory(
+        self, test_client: TestClient, test_session, test_session_archer, auth_headers
+    ):
+        """Test batch directory scoring endpoint."""
+        import tempfile
+        import shutil
+        import os
+        
+        # Create a temp directory inside workspace
+        temp_dir = tempfile.mkdtemp(dir="d:\\Git\\SPL-3")
+        try:
+            # Create mock images
+            mock_image = b"\xff\xd8\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\' \",#\x1c\x1c(7),01444\x1f\'9=82<.342\xff\xc0\x00\x0b\x08\x00\x01\x00\x01\x01\x01\x11\x00\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xbf\x00\xff\xd9"
+            with open(os.path.join(temp_dir, "shot1.jpg"), "wb") as f:
+                f.write(mock_image)
+            with open(os.path.join(temp_dir, "shot2.png"), "wb") as f:
+                f.write(mock_image)
+                
+            session_id = test_session.id
+            session_archer_id = test_session_archer.id
+            
+            # 1. Dry run mode
+            response = test_client.post(
+                f"/api/sessions/{session_id}/scores/batch-directory",
+                json={
+                    "directory_path": temp_dir,
+                    "session_archer_id": 0,
+                    "round": 1,
+                },
+                headers=auth_headers,
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data) == 2
+            assert data[0]["filename"] == "shot1.jpg"
+            assert data[1]["filename"] == "shot2.png"
+            assert data[0]["status"] == "success"
+            
+            # 2. Database record mode
+            response = test_client.post(
+                f"/api/sessions/{session_id}/scores/batch-directory",
+                json={
+                    "directory_path": temp_dir,
+                    "session_archer_id": session_archer_id,
+                    "round": 1,
+                },
+                headers=auth_headers,
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data) == 2
+            assert data[0]["score_id"] is not None
+            
+        finally:
+            shutil.rmtree(temp_dir)
 
 
 # ============================================================================

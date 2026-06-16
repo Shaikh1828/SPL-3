@@ -113,6 +113,7 @@ export interface Score {
   image_id?: string
   validated_by_ai: boolean
   confidence?: number
+  method?: string
   created_at: string
   updated_at: string
 }

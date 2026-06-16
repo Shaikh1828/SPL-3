@@ -142,7 +142,7 @@ class TestScoringService:
         is_valid, error_msg = ScoringService.validate_score(5, 5)
 
         assert is_valid is True
-        assert error_msg == ""
+        assert error_msg is None
 
     def test_validate_score_invalid_zone(self):
         """Test score validation with invalid zone."""
@@ -258,26 +258,23 @@ class TestHealthService:
         assert health["status"] in ["ok", "degraded", "down"]
         assert "components" in health
 
-    @pytest.mark.asyncio
-    async def test_check_database_health(self, test_db: Session):
+    def test_check_database_health(self, test_db: Session):
         """Test database health check."""
-        health = await HealthService.check_database_health()
+        health = HealthService.check_database_health()
 
         assert "status" in health
         assert health["status"] in ["ok", "degraded", "down"]
 
-    @pytest.mark.asyncio
-    async def test_check_cache_health(self):
+    def test_check_cache_health(self):
         """Test cache health check."""
-        health = await HealthService.check_cache_health()
+        health = HealthService.check_cache_health()
 
         assert "status" in health
         assert health["status"] in ["ok", "degraded", "down"]
 
-    @pytest.mark.asyncio
-    async def test_check_storage_health(self):
+    def test_check_storage_health(self):
         """Test storage health check."""
-        health = await HealthService.check_storage_health()
+        health = HealthService.check_storage_health()
 
         assert "status" in health
         assert "used_gb" in health

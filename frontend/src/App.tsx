@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import DashboardPage from './pages/DashboardPage'
 import ScoringPage from './pages/ScoringPage'
+import BatchTestingPage from './pages/BatchTestingPage'
 import ReportsPage from './pages/ReportsPage'
 import CamerasPage from './pages/CamerasPage'
 import TournamentsPage from './pages/TournamentsPage'
@@ -43,6 +44,7 @@ export default function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="scoring" element={<ScoringPage />} />
+          <Route path="batch-testing" element={<BatchTestingPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="cameras" element={<CamerasPage />} />
           <Route path="tournaments" element={<TournamentsPage />} />

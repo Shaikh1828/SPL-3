@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Camera as CameraIcon, Target, Activity, Square, Trophy, Plus, Trash2, X } from 'lucide-react'
+import { Camera as CameraIcon, Target, Activity, Square, Trophy, Plus, Trash2, X, Upload } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { camerasApi } from '@/api/cameras'
 import { scoresApi } from '@/api/scores'
@@ -43,8 +43,9 @@ function CameraFeed({ cameraId, label, status }: { cameraId: number, label: stri
 function ScoringLane({ 
   assignment, 
   camera, 
-  archer,
+  archer, 
   onCalculate, 
+  onUploadImage,
   isCalculating,
   lastScore
 }: { 
@@ -52,6 +53,7 @@ function ScoringLane({
   camera?: Camera,
   archer?: SessionArcher,
   onCalculate: (cameraId: number, laneId: number) => void,
+  onUploadImage: (laneId: number, file: File) => void,
   isCalculating: boolean,
   lastScore?: Score | null
 }) {
@@ -73,7 +75,7 @@ function ScoringLane({
         status={camera?.status ?? 'disconnected'} 
       />
 
-      <div className="flex items-center justify-between mt-2">
+      <div className="flex flex-col gap-2 mt-2">
         <button
           onClick={() => onCalculate(assignment.camera_id, assignment.lane)}
           disabled={isCalculating || camera?.status !== 'connected' || !archer}
@@ -85,6 +87,27 @@ function ScoringLane({
             <><CameraIcon className="w-4 h-4" /> Calculate Score</>
           )}
         </button>
+
+        <label className={cn(
+          "btn-ghost w-full flex items-center justify-center gap-2 cursor-pointer border border-dashed border-navy-600 hover:border-gold-500 hover:text-gold-400 py-2 rounded-lg text-sm transition-colors",
+          (isCalculating || !archer) && "opacity-50 pointer-events-none"
+        )}>
+          <Upload className="w-4 h-4" />
+          <span>Upload Shot Image</span>
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) {
+                onUploadImage(assignment.lane, file)
+              }
+              e.target.value = ''
+            }}
+            disabled={isCalculating || !archer}
+          />
+        </label>
       </div>
 
       {lastScore && (
@@ -167,6 +190,37 @@ export default function ScoringPage() {
       setArchers(Array.isArray(archList) ? archList : [])
     } catch (err) {
       toast.error('Scoring failed')
+    } finally {
+      setCalculating(prev => ({ ...prev, [laneId]: false }))
+    }
+  }
+
+  const handleUploadImage = async (laneId: number, file: File) => {
+    if (!activeSession) return
+    const laneArcher = archers.find(a => a.lane_number === laneId)
+    if (!laneArcher) {
+      toast.error(`Please assign an archer to Lane ${laneId} first!`)
+      return
+    }
+
+    setCalculating(prev => ({ ...prev, [laneId]: true }))
+    try {
+      const formData = new FormData()
+      formData.append('session_archer_id', laneArcher.id.toString())
+      formData.append('round', currentEnd.toString())
+      formData.append('file', file)
+
+      const score = await scoresApi.upload(activeSession.id, formData)
+      
+      setLastScores(prev => ({ ...prev, [laneId]: score }))
+      toast.success(`Score recorded for ${laneArcher.archer_name}: ${score.points} pts (AI Confidence: ${Math.round((score.confidence ?? 0) * 100)}%)`)
+      
+      // Refresh archers list to get updated total score
+      const archList = await sessionsApi.listArchers(activeSession.id)
+      setArchers(Array.isArray(archList) ? archList : [])
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.detail || 'Image upload/scoring failed'
+      toast.error(errorMsg)
     } finally {
       setCalculating(prev => ({ ...prev, [laneId]: false }))
     }
@@ -297,6 +351,7 @@ export default function ScoringPage() {
                   camera={cameras.find(c => c.id === assignment.camera_id)}
                   archer={laneArcher}
                   onCalculate={handleCalculate}
+                  onUploadImage={handleUploadImage}
                   isCalculating={calculating[assignment.lane] || false}
                   lastScore={lastScores[assignment.lane]}
                 />
