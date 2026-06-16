@@ -1,7 +1,7 @@
 import { apiClient } from './client'
 import type {
   Session, SessionCreate, SessionArcher, SessionArcherCreate,
-  PaginatedResponse, Leaderboard
+  PaginatedResponse, LeaderboardEntry
 } from '@/types'
 
 export const sessionsApi = {
@@ -22,8 +22,14 @@ export const sessionsApi = {
   registerArcher: (sessionId: number, data: SessionArcherCreate) =>
     apiClient.post<SessionArcher>(`/sessions/${sessionId}/archers`, data).then((r) => r.data),
 
+  listArchers: (sessionId: number) =>
+    apiClient.get<SessionArcher[]>(`/sessions/${sessionId}/archers`).then((r) => r.data),
+
+  removeArcher: (sessionId: number, sessionArcherId: number) =>
+    apiClient.delete(`/sessions/${sessionId}/archers/${sessionArcherId}`).then((r) => r.data),
+
   getLeaderboard: (sessionId: number, limit = 100) =>
     apiClient
-      .get<Leaderboard>(`/sessions/${sessionId}/leaderboard`, { params: { limit } })
+      .get<LeaderboardEntry[]>(`/sessions/${sessionId}/leaderboard`, { params: { limit } })
       .then((r) => r.data),
 }

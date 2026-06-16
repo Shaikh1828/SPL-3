@@ -22,7 +22,7 @@ RUN python -m venv /build/.venv && \
 # Install Python dependencies directly (with retries and extended timeout)
 RUN /build/.venv/bin/pip install --default-timeout=600 --retries 5 \
     fastapi==0.110.0 \
-    uvicorn==0.27.0 \
+    "uvicorn[standard]==0.27.0" \
     sqlalchemy==2.0.23 \
     psycopg2-binary==2.9.9 \
     pydantic==2.5.3 \

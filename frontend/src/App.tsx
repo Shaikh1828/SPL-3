@@ -4,6 +4,7 @@ import { Layout } from './components/layout/Layout'
 import { useAuthStore } from './store/authStore'
 
 import LoginPage from './pages/LoginPage'
+import RegisterPage from './pages/RegisterPage'
 import DashboardPage from './pages/DashboardPage'
 import ScoringPage from './pages/ScoringPage'
 import ReportsPage from './pages/ReportsPage'
@@ -36,6 +37,7 @@ export default function App() {
       
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
         
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={<Navigate to="/dashboard" replace />} />

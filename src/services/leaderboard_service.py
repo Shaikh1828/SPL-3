@@ -88,6 +88,7 @@ class LeaderboardService:
 
         leaderboard = []
         for rank, archer in enumerate(archers, 1):
+            arrows_recorded = db.query(func.count(Score.id)).filter(Score.session_archer_id == archer.id).scalar()
             leaderboard.append(
                 {
                     "rank": rank,
@@ -96,6 +97,8 @@ class LeaderboardService:
                     "total_score": archer.total_score,
                     "current_round": archer.current_round,
                     "session_archer_id": archer.id,
+                    "lane_number": archer.lane_number,
+                    "arrows_recorded": arrows_recorded or 0,
                 }
             )
 

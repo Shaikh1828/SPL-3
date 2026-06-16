@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session as SQLSession
 import structlog
 
 from src.database import get_db
-from src.schemas import CameraResponse, CameraAssignRequest, CameraAssignmentResponse
+from src.schemas import CameraCreate, CameraResponse, CameraAssignRequest, CameraAssignmentResponse
 from src.dependencies import get_current_user
 from src.models.user import User
 from src.models.camera import Camera, CameraLaneAssignment
@@ -321,4 +321,151 @@ async def assign_camera_to_lane(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to assign camera to lane",
+        )
+
+
+@router.get("/cameras", response_model=List[CameraResponse])
+async def list_global_cameras(
+    db: SQLSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List all cameras registered in the system."""
+    try:
+        cameras = db.query(Camera).order_by(Camera.id.asc()).all()
+        return cameras
+    except Exception as e:
+        logger.exception("list_global_cameras_error", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve global cameras",
+        )
+
+
+@router.post("/cameras", response_model=CameraResponse, status_code=status.HTTP_201_CREATED)
+async def register_camera(
+    camera_data: CameraCreate,
+    db: SQLSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Register a new camera in the system."""
+    try:
+        # Check duplicate name
+        existing = db.query(Camera).filter(Camera.name == camera_data.name).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Camera with name '{camera_data.name}' already exists",
+            )
+
+        new_camera = Camera(
+            name=camera_data.name,
+            camera_type=camera_data.camera_type,
+            url=camera_data.url,
+            status="disconnected",
+        )
+        db.add(new_camera)
+        db.commit()
+        db.refresh(new_camera)
+        logger.info("camera_registered", camera_id=new_camera.id, name=new_camera.name)
+        return new_camera
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.exception("register_camera_error", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to register camera",
+        )
+
+
+@router.delete("/cameras/{camera_id}", status_code=status.HTTP_200_OK)
+async def delete_camera(
+    camera_id: int,
+    db: SQLSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a camera from the system."""
+    try:
+        camera = db.query(Camera).filter(Camera.id == camera_id).first()
+        if not camera:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Camera not found",
+            )
+        # Remove assignments first
+        db.query(CameraLaneAssignment).filter(CameraLaneAssignment.camera_id == camera_id).delete()
+        
+        db.delete(camera)
+        db.commit()
+        logger.info("camera_deleted", camera_id=camera_id)
+        return {"success": True, "message": "Camera successfully deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.exception("delete_camera_error", camera_id=camera_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete camera",
+        )
+
+
+@router.delete("/sessions/{session_id}/cameras/{camera_id}", status_code=status.HTTP_200_OK)
+async def unassign_camera(
+    session_id: int,
+    camera_id: int,
+    db: SQLSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Unassign a camera from a session lane."""
+    try:
+        assignment = (
+            db.query(CameraLaneAssignment)
+            .filter(CameraLaneAssignment.session_id == session_id, CameraLaneAssignment.camera_id == camera_id)
+            .first()
+        )
+        if not assignment:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Camera assignment not found in this session",
+            )
+        db.delete(assignment)
+        db.commit()
+        logger.info("camera_unassigned", session_id=session_id, camera_id=camera_id)
+        return {"success": True, "message": "Camera assignment successfully removed"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.exception("unassign_camera_error", session_id=session_id, camera_id=camera_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to remove camera assignment",
+        )
+
+
+@router.get("/sessions/{session_id}/assignments", response_model=List[CameraAssignmentResponse])
+async def list_session_camera_assignments(
+    session_id: int,
+    db: SQLSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List all camera assignments in a session."""
+    try:
+        session = db.query(Session).filter(Session.id == session_id).first()
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found",
+            )
+        assignments = db.query(CameraLaneAssignment).filter(CameraLaneAssignment.session_id == session_id).order_by(CameraLaneAssignment.lane.asc()).all()
+        return assignments
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("list_assignments_error", session_id=session_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to list camera assignments",
         )

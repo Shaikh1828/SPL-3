@@ -5,12 +5,12 @@ import { sessionsApi } from '@/api/sessions'
 import { reportsApi } from '@/api/health'
 import toast from 'react-hot-toast'
 import { cn } from '@/lib/utils'
-import type { Leaderboard } from '@/types'
+import type { LeaderboardEntry } from '@/types'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts'
 
 export default function ReportsPage() {
   const { activeSession } = useSessionStore()
-  const [leaderboard, setLeaderboard] = useState<Leaderboard | null>(null)
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[] | null>(null)
   const [view, setView] = useState<'table' | 'charts' | 'images'>('table')
   const [downloading, setDownloading] = useState(false)
 
@@ -123,7 +123,7 @@ export default function ReportsPage() {
                 </tr>
               </thead>
               <tbody>
-                {leaderboard?.items.map(entry => (
+                {leaderboard?.map(entry => (
                   <tr key={entry.archer_id} className="border-b border-navy-700 hover:bg-navy-800/50">
                     <td className="px-4 py-3 font-medium text-slate-300">{entry.rank}</td>
                     <td className="px-4 py-3 font-medium text-slate-200">{entry.archer_name}</td>

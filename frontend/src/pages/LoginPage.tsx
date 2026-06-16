@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -189,6 +189,18 @@ export default function LoginPage() {
               <p className="text-xs text-slate-400"><span className="text-gold-400">admin</span> / admin123!</p>
               <p className="text-xs text-slate-400"><span className="text-gold-400">scorer</span> / scorer123!</p>
             </div>
+          </div>
+
+          <div className="mt-4 text-center">
+            <p className="text-sm text-slate-500">
+              Don't have an account?{' '}
+              <Link
+                to="/register"
+                className="text-gold-400 hover:text-gold-300 font-medium transition-colors"
+              >
+                Create one
+              </Link>
+            </p>
           </div>
         </div>
       </div>

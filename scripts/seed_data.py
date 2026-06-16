@@ -30,48 +30,53 @@ def seed_users(db: Session):
         User(
             username="admin",
             email="admin@archery.local",
-            password_hash=hash_password("AdminPass123!"),
+            password_hash=hash_password("admin123!"),
             role="admin",
             is_active=True,
         ),
         User(
-            username="scorer1",
-            email="scorer1@archery.local",
-            password_hash=hash_password("ScorerPass123!"),
+            username="scorer",
+            email="scorer@archery.local",
+            password_hash=hash_password("scorer123!"),
             role="scorer",
             is_active=True,
         ),
         User(
             username="scorer2",
             email="scorer2@archery.local",
-            password_hash=hash_password("ScorerPass123!"),
+            password_hash=hash_password("scorer123!"),
             role="scorer",
             is_active=True,
         ),
         User(
             username="spectator1",
             email="spectator1@archery.local",
-            password_hash=hash_password("SpectatorPass123!"),
+            password_hash=hash_password("Spectator123!"),
             role="spectator",
             is_active=True,
         ),
         User(
             username="archer1",
             email="archer1@archery.local",
-            password_hash=hash_password("ArcherPass123!"),
+            password_hash=hash_password("Archer123!"),
             role="archer",
             is_active=True,
         ),
     ]
 
+    db_users = []
     for user in users:
         existing = db.query(User).filter(User.username == user.username).first()
         if not existing:
             db.add(user)
+            db.commit()
+            db.refresh(user)
+            db_users.append(user)
+        else:
+            db_users.append(existing)
 
-    db.commit()
-    logger.info("users_seeded", count=len(users))
-    return users
+    logger.info("users_seeded", count=len(db_users))
+    return db_users
 
 
 def seed_tournaments(db: Session, admin_user: User):

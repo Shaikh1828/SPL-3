@@ -10,8 +10,8 @@ Endpoints:
 - POST /sessions/{session_id}/archers
 """
 
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import List, Dict, Any, Optional
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session as SQLSession
 import structlog
 
@@ -28,8 +28,14 @@ logger = structlog.get_logger()
 router = APIRouter(tags=["sessions"])
 
 
-@router.get("/tournaments/{tournament_id}/sessions", response_model=List[SessionResponse])
-async def list_sessions(tournament_id: int, db: SQLSession = Depends(get_db)):
+@router.get("/tournaments/{tournament_id}/sessions", response_model=Dict[str, Any])
+async def list_sessions(
+    tournament_id: int,
+    db: SQLSession = Depends(get_db),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    status_filter: Optional[str] = Query(None, alias="status"),
+):
     """
     List all sessions in a tournament.
 
@@ -38,9 +44,12 @@ async def list_sessions(tournament_id: int, db: SQLSession = Depends(get_db)):
     Args:
         tournament_id: Tournament ID
         db: Database session
+        skip: Pagination skip
+        limit: Pagination limit
+        status_filter: Optional filter by session status
 
     Returns:
-        List of sessions
+        Paginated list of sessions
     """
     try:
         tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
@@ -50,9 +59,16 @@ async def list_sessions(tournament_id: int, db: SQLSession = Depends(get_db)):
                 detail="Tournament not found",
             )
 
-        sessions = db.query(Session).filter(Session.tournament_id == tournament_id).all()
-        logger.info("sessions_listed", tournament_id=tournament_id, count=len(sessions))
-        return sessions
+        query = db.query(Session).filter(Session.tournament_id == tournament_id)
+        if status_filter:
+            query = query.filter(Session.status == status_filter)
+
+        total = query.count()
+        sessions = query.offset(skip).limit(limit).all()
+        items = [SessionResponse.model_validate(s).model_dump() for s in sessions]
+
+        logger.info("sessions_listed", tournament_id=tournament_id, count=len(items))
+        return {"items": items, "total": total, "skip": skip, "limit": limit}
 
     except HTTPException:
         raise
@@ -335,4 +351,64 @@ async def add_archer_to_session(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to add archer to session",
+        )
+
+
+@router.get("/sessions/{session_id}/archers", response_model=List[SessionArcherResponse])
+async def list_session_archers(
+    session_id: int,
+    db: SQLSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List all archers registered in a session."""
+    try:
+        session = db.query(Session).filter(Session.id == session_id).first()
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found",
+            )
+        archers = db.query(SessionArcher).filter(SessionArcher.session_id == session_id).order_by(SessionArcher.lane_number.asc()).all()
+        return archers
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("list_archers_error", session_id=session_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to list session archers",
+        )
+
+
+@router.delete("/sessions/{session_id}/archers/{session_archer_id}", status_code=status.HTTP_200_OK)
+async def remove_archer_from_session(
+    session_id: int,
+    session_archer_id: int,
+    db: SQLSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Remove an archer from a session."""
+    try:
+        session_archer = (
+            db.query(SessionArcher)
+            .filter(SessionArcher.session_id == session_id, SessionArcher.id == session_archer_id)
+            .first()
+        )
+        if not session_archer:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Archer not found in this session",
+            )
+        db.delete(session_archer)
+        db.commit()
+        logger.info("archer_removed_from_session", session_id=session_id, session_archer_id=session_archer_id)
+        return {"success": True, "message": "Archer successfully removed from session"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.exception("remove_archer_error", session_id=session_id, session_archer_id=session_archer_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to remove archer from session",
         )

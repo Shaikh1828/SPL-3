@@ -27,6 +27,7 @@ export interface RegisterRequest {
   username: string
   email: string
   password: string
+  password_confirm: string
 }
 
 // ─── Tournament ───────────────────────────────────────────────────────────────
@@ -105,11 +106,11 @@ export interface Score {
   id: number
   session_id: number
   session_archer_id: number
-  round_number: number
-  arrow_number: number
+  round: number
+  arrow_num: number
   zone: number
   points: number
-  image_path?: string
+  image_id?: string
   validated_by_ai: boolean
   confidence?: number
   created_at: string
@@ -118,11 +119,11 @@ export interface Score {
 
 export interface ScoreCreate {
   session_archer_id: number
-  round_number: number
-  arrow_number: number
+  round: number
+  arrow_num: number
   zone: number
   points: number
-  image_path?: string
+  image_id?: string
 }
 
 export interface ScoreValidate {
@@ -173,13 +174,13 @@ export interface CameraLaneAssignment {
   id: number
   session_id: number
   camera_id: number
-  lane_number: number
+  lane: number
   assigned_at: string
 }
 
 export interface AssignCameraRequest {
   camera_id: number
-  lane_number: number
+  lane: number
 }
 
 // ─── Health ───────────────────────────────────────────────────────────────────

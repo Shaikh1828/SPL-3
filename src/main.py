@@ -35,6 +35,7 @@ from src.api import (
     leaderboard_router,
     report_router,
     health_router,
+    user_router,
 )
 from src.api.websocket import router as websocket_router
 from src.middleware import RateLimitMiddleware, ErrorHandlingMiddleware
@@ -172,6 +173,7 @@ app.include_router(camera_router, prefix="/api", tags=["cameras"])
 app.include_router(leaderboard_router, prefix="/api", tags=["leaderboards"])
 app.include_router(report_router, prefix="/api", tags=["reports"])
 app.include_router(health_router, prefix="/api", tags=["health"])
+app.include_router(user_router, prefix="/api", tags=["users"])
 app.include_router(websocket_router, prefix="/api", tags=["websocket"])
 
 

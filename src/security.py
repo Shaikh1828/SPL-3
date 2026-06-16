@@ -88,13 +88,14 @@ def validate_password_strength(password: str) -> tuple[bool, Optional[str]]:
     return True, None
 
 
-def create_access_token(user_id: int, expires_in_hours: Optional[int] = None) -> str:
+def create_access_token(user_id: int, expires_in_hours: Optional[int] = None, role: str = "spectator") -> str:
     """
     Create a JWT access token.
 
     Args:
         user_id: User ID to include in token
         expires_in_hours: Hours until token expires (defaults to settings)
+        role: User role to embed in the token
 
     Returns:
         JWT token string
@@ -106,7 +107,13 @@ def create_access_token(user_id: int, expires_in_hours: Optional[int] = None) ->
         expires_in_hours = settings.jwt_expiration_hours
 
     expire = datetime.utcnow() + timedelta(hours=expires_in_hours)
-    payload = {"sub": str(user_id), "exp": expire, "iat": datetime.utcnow(), "type": "access"}
+    payload = {
+        "sub": str(user_id),
+        "exp": expire,
+        "iat": datetime.utcnow(),
+        "type": "access",
+        "role": role,
+    }
 
     token = jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
     return token

@@ -54,6 +54,12 @@ class LoginResponse(BaseModel):
     expires_in: int
 
 
+class RefreshRequest(BaseModel):
+    """Refresh token request."""
+
+    refresh_token: str
+
+
 class PasswordResetRequest(BaseModel):
     """Password reset request."""
 
@@ -135,7 +141,7 @@ class SessionArcherResponse(BaseModel):
 class ScoreCreate(BaseModel):
     """Create score request."""
 
-    archer_id: int
+    session_archer_id: int
     round: int = Field(..., ge=1)
     arrow_num: int = Field(..., ge=1)
     zone: int = Field(..., ge=0, le=10)
@@ -177,9 +183,20 @@ class LeaderboardItem(BaseModel):
     total_score: int
     current_round: int
     session_archer_id: int
+    lane_number: Optional[int] = None
+    arrows_recorded: int = 0
+
 
 
 # Camera Schemas
+class CameraCreate(BaseModel):
+    """Register camera request."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    camera_type: str = Field(..., pattern="^(USB|RTSP|HTTP)$")
+    url: str = Field(..., min_length=1, max_length=500)
+
+
 class CameraResponse(BaseModel):
     """Camera response."""
 

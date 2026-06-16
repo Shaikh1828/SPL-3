@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
-import { Camera as CameraIcon, Target, Activity, Square } from 'lucide-react'
+import { Camera as CameraIcon, Target, Activity, Square, Trophy, Plus, Trash2, X } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { camerasApi } from '@/api/cameras'
 import { scoresApi } from '@/api/scores'
+import { sessionsApi } from '@/api/sessions'
 import { useSessionStore } from '@/store/sessionStore'
 import { useCameraStore } from '@/store/cameraStore'
 import { useCameraPreview } from '@/hooks/useCameraPreview'
 import toast from 'react-hot-toast'
 import { cn, getConfidenceColor } from '@/lib/utils'
-import type { Camera, CameraLaneAssignment, Score } from '@/types'
+import type { Camera, CameraLaneAssignment, Score, SessionArcher } from '@/types'
 
 function CameraFeed({ cameraId, label, status }: { cameraId: number, label: string, status: string }) {
   const imgRef = useRef<HTMLImageElement>(null)
@@ -41,12 +43,14 @@ function CameraFeed({ cameraId, label, status }: { cameraId: number, label: stri
 function ScoringLane({ 
   assignment, 
   camera, 
+  archer,
   onCalculate, 
   isCalculating,
   lastScore
 }: { 
   assignment: CameraLaneAssignment, 
   camera?: Camera,
+  archer?: SessionArcher,
   onCalculate: (cameraId: number, laneId: number) => void,
   isCalculating: boolean,
   lastScore?: Score | null
@@ -55,21 +59,24 @@ function ScoringLane({
     <div className="glass-card p-4 flex flex-col gap-4">
       <div className="flex justify-between items-center">
         <div>
-          <h3 className="font-semibold text-slate-200">Lane {assignment.lane_number}</h3>
-          <p className="text-xs text-slate-500">Camera: {camera?.name ?? 'Unknown'}</p>
+          <h3 className="font-semibold text-slate-200">Lane {assignment.lane}</h3>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Archer: <span className="text-gold-400 font-medium">{archer?.archer_name ?? 'Unassigned'}</span>
+          </p>
+          <p className="text-xs text-slate-500 mt-0.5">Camera: {camera?.name ?? 'Unknown'}</p>
         </div>
       </div>
 
       <CameraFeed 
         cameraId={assignment.camera_id} 
-        label={`Lane ${assignment.lane_number}`} 
+        label={`Lane ${assignment.lane}`} 
         status={camera?.status ?? 'disconnected'} 
       />
 
       <div className="flex items-center justify-between mt-2">
         <button
-          onClick={() => onCalculate(assignment.camera_id, assignment.lane_number)}
-          disabled={isCalculating || camera?.status !== 'connected'}
+          onClick={() => onCalculate(assignment.camera_id, assignment.lane)}
+          disabled={isCalculating || camera?.status !== 'connected' || !archer}
           className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50"
         >
           {isCalculating ? (
@@ -89,7 +96,7 @@ function ScoringLane({
             </span>
           </div>
           <div className="flex items-center justify-between text-xs text-slate-400">
-            <span>Arrow {lastScore.arrow_number} / Round {lastScore.round_number}</span>
+            <span>Arrow {lastScore.arrow_num} / Round {lastScore.round}</span>
             <button className="text-gold-400 hover:text-gold-300">View Image</button>
           </div>
         </div>
@@ -99,45 +106,65 @@ function ScoringLane({
 }
 
 export default function ScoringPage() {
+  const navigate = useNavigate()
   const { activeSession, currentEnd, setCurrentEnd } = useSessionStore()
   const { cameras, setCameras } = useCameraStore()
   const [assignments, setAssignments] = useState<CameraLaneAssignment[]>([])
+  const [archers, setArchers] = useState<SessionArcher[]>([])
   const [calculating, setCalculating] = useState<Record<number, boolean>>({})
   const [lastScores, setLastScores] = useState<Record<number, Score | null>>({})
 
-  useEffect(() => {
+  // Archer Modal state
+  const [isAddArcherOpen, setIsAddArcherOpen] = useState(false)
+  const [newArcherName, setNewArcherName] = useState('')
+  const [newArcherLane, setNewArcherLane] = useState<number>(1)
+
+  const loadData = async () => {
     if (!activeSession) return
-    const load = async () => {
-      try {
-        const cams = await camerasApi.listForSession(activeSession.id)
-        setCameras(cams.items)
-        // In a real implementation, we'd fetch actual assignments. 
-        // For now, we mock them based on cameras.
-        setAssignments(cams.items.map((c, i) => ({
-          id: i, session_id: activeSession.id, camera_id: c.id, lane_number: i + 1, assigned_at: ''
-        })))
-      } catch {
-        toast.error('Failed to load cameras')
-      }
+    try {
+      // Load cameras
+      const cams = await camerasApi.listForSession(activeSession.id)
+      setCameras(Array.isArray(cams) ? cams : [])
+
+      // Load assignments
+      const assigns = await camerasApi.listAssignments(activeSession.id)
+      setAssignments(Array.isArray(assigns) ? assigns : [])
+
+      // Load archers
+      const archList = await sessionsApi.listArchers(activeSession.id)
+      setArchers(Array.isArray(archList) ? archList : [])
+    } catch {
+      toast.error('Failed to load session details')
     }
-    load()
-  }, [activeSession, setCameras])
+  }
+
+  useEffect(() => {
+    loadData()
+  }, [activeSession])
 
   const handleCalculate = async (_cameraId: number, laneId: number) => {
     if (!activeSession) return
+    const laneArcher = archers.find(a => a.lane_number === laneId)
+    if (!laneArcher) {
+      toast.error(`Please assign an archer to Lane ${laneId} first!`)
+      return
+    }
+
     setCalculating(prev => ({ ...prev, [laneId]: true }))
     try {
-      // Mock score creation for now since we don't have the full archer/arrow context here without a form
       const score = await scoresApi.record(activeSession.id, {
-        session_archer_id: laneId, // Mock
-        round_number: currentEnd,
-        arrow_number: 1, // Mock
+        session_archer_id: laneArcher.id,
+        round: currentEnd,
+        arrow_num: 1, // Mock
         zone: 9,
         points: 9,
-        image_path: 'mock.jpg'
+        image_id: 'mock.jpg'
       })
       setLastScores(prev => ({ ...prev, [laneId]: score }))
-      toast.success(`Score recorded: ${score.points}`)
+      toast.success(`Score recorded for ${laneArcher.archer_name}: ${score.points}`)
+      // Refresh archers list to get updated total score
+      const archList = await sessionsApi.listArchers(activeSession.id)
+      setArchers(Array.isArray(archList) ? archList : [])
     } catch (err) {
       toast.error('Scoring failed')
     } finally {
@@ -146,7 +173,57 @@ export default function ScoringPage() {
   }
 
   const handleCalculateAll = async () => {
-    assignments.forEach(a => handleCalculate(a.camera_id, a.lane_number))
+    assignments.forEach(a => handleCalculate(a.camera_id, a.lane))
+  }
+
+  const handleAddArcher = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!activeSession) return
+    if (!newArcherName) {
+      toast.error('Please enter archer name')
+      return
+    }
+    try {
+      await sessionsApi.registerArcher(activeSession.id, {
+        archer_name: newArcherName,
+        lane_number: newArcherLane,
+      })
+      toast.success('Archer registered successfully')
+      setNewArcherName('')
+      setIsAddArcherOpen(false)
+      // Refresh archers
+      const archList = await sessionsApi.listArchers(activeSession.id)
+      setArchers(Array.isArray(archList) ? archList : [])
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to add archer')
+    }
+  }
+
+  const handleRemoveArcher = async (sessionArcherId: number) => {
+    if (!activeSession) return
+    if (!window.confirm('Remove this archer from the session?')) return
+    try {
+      await sessionsApi.removeArcher(activeSession.id, sessionArcherId)
+      toast.success('Archer removed')
+      // Refresh archers
+      const archList = await sessionsApi.listArchers(activeSession.id)
+      setArchers(Array.isArray(archList) ? archList : [])
+    } catch {
+      toast.error('Failed to remove archer')
+    }
+  }
+
+  const handleEndSession = async () => {
+    if (!activeSession) return
+    if (!window.confirm('Are you sure you want to end this session? This will mark it as completed.')) return
+    try {
+      await sessionsApi.updateStatus(activeSession.id, 'completed')
+      toast.success('Session completed successfully')
+      useSessionStore.getState().setActiveSession(null)
+      navigate('/tournaments')
+    } catch {
+      toast.error('Failed to end session')
+    }
   }
 
   if (!activeSession) {
@@ -196,33 +273,135 @@ export default function ScoringPage() {
             <CameraIcon className="w-4 h-4" />
             Calculate All
           </button>
-          <button className="btn-ghost flex items-center gap-2 text-red-400 hover:text-red-300 hover:bg-red-500/10">
+          <button 
+            onClick={handleEndSession}
+            className="btn-ghost flex items-center gap-2 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+          >
             <Square className="w-4 h-4" />
             End Session
           </button>
         </div>
       </div>
 
-      {/* Camera Grid */}
-      <div className="flex-1 overflow-y-auto min-h-0">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-6">
-          {assignments.map(assignment => (
-            <ScoringLane
-              key={assignment.lane_number}
-              assignment={assignment}
-              camera={cameras.find(c => c.id === assignment.camera_id)}
-              onCalculate={handleCalculate}
-              isCalculating={calculating[assignment.lane_number] || false}
-              lastScore={lastScores[assignment.lane_number]}
-            />
-          ))}
-          {assignments.length === 0 && (
-             <div className="col-span-full py-12 text-center text-slate-500 border border-dashed border-navy-700 rounded-xl">
-               No cameras assigned to lanes for this session.
-             </div>
-          )}
+      {/* Main Grid & Archers sidebar */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1 overflow-y-auto min-h-0">
+        {/* Camera Grid */}
+        <div className="lg:col-span-3 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {assignments.map(assignment => {
+              const laneArcher = archers.find(a => a.lane_number === assignment.lane)
+              return (
+                <ScoringLane
+                  key={assignment.lane}
+                  assignment={assignment}
+                  camera={cameras.find(c => c.id === assignment.camera_id)}
+                  archer={laneArcher}
+                  onCalculate={handleCalculate}
+                  isCalculating={calculating[assignment.lane] || false}
+                  lastScore={lastScores[assignment.lane]}
+                />
+              )
+            })}
+            {assignments.length === 0 && (
+              <div className="col-span-full py-12 text-center text-slate-500 border border-dashed border-navy-700 rounded-xl">
+                No cameras assigned to lanes for this session. Go to Cameras to assign one.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Archers List Sidebar */}
+        <div className="glass-card p-5 h-fit flex flex-col space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-navy-700">
+            <h2 className="font-semibold text-slate-200 flex items-center gap-2">
+              <Trophy className="w-4 h-4 text-gold-400" />
+              Archers
+            </h2>
+            <button 
+              onClick={() => setIsAddArcherOpen(true)}
+              className="btn-primary text-xs py-1 px-2.5 flex items-center gap-1"
+            >
+              <Plus className="w-3 h-3" /> Add Archer
+            </button>
+          </div>
+
+          <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+            {archers.map(a => (
+              <div key={a.id} className="flex items-center justify-between bg-navy-800/40 p-3 rounded-lg border border-navy-750">
+                <div>
+                  <p className="text-sm font-semibold text-slate-200">{a.archer_name}</p>
+                  <p className="text-xs text-slate-500">Lane {a.lane_number ?? 'None'} · Score: {a.total_score}</p>
+                </div>
+                <button 
+                  onClick={() => handleRemoveArcher(a.id)}
+                  className="text-slate-500 hover:text-red-400 p-1 rounded transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+            {archers.length === 0 && (
+              <p className="text-sm text-slate-500 text-center py-4">No archers registered in this session.</p>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Add Archer Modal */}
+      {isAddArcherOpen && (
+        <div className="fixed inset-0 bg-navy-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="glass-card max-w-md w-full p-6 space-y-4 animate-in">
+            <div className="flex justify-between items-center pb-2 border-b border-navy-700">
+              <h3 className="text-lg font-bold text-slate-100">Add Archer to Session</h3>
+              <button onClick={() => setIsAddArcherOpen(false)} className="text-slate-400 hover:text-slate-200">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleAddArcher} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">Archer Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={newArcherName}
+                  onChange={e => setNewArcherName(e.target.value)}
+                  placeholder="e.g. John Doe"
+                  className="input-dark w-full"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">Assign to Lane (1-{activeSession.num_lanes}) *</label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  max={activeSession.num_lanes}
+                  value={newArcherLane}
+                  onChange={e => setNewArcherLane(parseInt(e.target.value) || 1)}
+                  className="input-dark w-full"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2 border-t border-navy-700">
+                <button
+                  type="button"
+                  onClick={() => setIsAddArcherOpen(false)}
+                  className="btn-ghost py-1.5 px-3 text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary py-1.5 px-3 text-sm"
+                >
+                  Add Archer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

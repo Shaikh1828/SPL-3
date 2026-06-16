@@ -4,19 +4,18 @@ from __future__ import annotations
 Image processing service for arrow detection and storage management.
 
 Implements:
-- NFR Pattern #4: Image Fallback Chain (color → edge → ML voting)
+- NFR Pattern #4: Image Fallback Chain — delegates to ArrowDetectionService
+  (HoughCircles target + color/line/contour arrow → WA zone calculation)
 - NFR Pattern #12: Image Compression (JPEG quality 70)
 - NFR Pattern #9: Storage Management (90-day rotation, quota)
-- Arrow detection pipeline
 
 Story coverage: US-3.2 (arrow detection), US-5.2 (image capture and storage)
 """
 
 import os
 import uuid
-import json
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, Tuple
+from typing import Any, Dict, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor
 import structlog
 
@@ -27,11 +26,15 @@ try:
     import numpy as np
 except ImportError:
     logger.warning("opencv_not_available")
-    cv2 = None
-    np = None
+    cv2 = None  # type: ignore
+    np = None   # type: ignore
 
 from src.config import settings
 from src.events import publish_event, EventType
+from src.services.arrow_detection_service import ArrowDetectionService
+
+# Singleton detection service (stateless, reuse across calls)
+_arrow_detector = ArrowDetectionService()
 
 
 class ImageService:
@@ -51,66 +54,40 @@ class ImageService:
         self.image_height = settings.image_resize_height
 
     def detect_arrow_in_image(
-        self, image_data: bytes, image_path: Optional[str] = None
+        self, image_data: bytes = None, image_path: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Detect arrow in image using fallback chain.
+        Detect arrow in image using the ArrowDetectionService pipeline.
 
         Implements NFR Pattern #4: Image Fallback Chain
-        - Method 1: Color-based detection (HSV range)
-        - Method 2: Edge-based detection (Canny + contours)
-        - Method 3: ML-based detection (placeholder)
+          Primary  → HoughCircles target + multi-method arrow tip detection
+          Fallback → dark-cluster scan (target found, arrow tip not found)
+          Last     → assumed-center geometric fallback
 
         Args:
-            image_data: Raw image bytes or
-            image_path: Path to image file
+            image_data: Raw image bytes
+            image_path: Path to image file (used when image_data is None)
 
         Returns:
-            Dictionary with zone, confidence, method used
+            dict with keys: zone (int|None), confidence (float), method (str),
+                            points (int|None), distance_ratio (float|None)
         """
-        if not cv2:
-            logger.warning("opencv_not_available_using_fallback")
-            return {"zone": None, "confidence": 0.0, "method": "unavailable"}
-
         try:
-            # Load image
-            if image_data:
-                nparr = np.frombuffer(image_data, np.uint8)
-                image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            elif image_path:
-                image = cv2.imread(image_path)
-            else:
-                return {"zone": None, "confidence": 0.0, "method": "no_input"}
-
-            if image is None:
-                logger.warning("image_decode_failed")
-                return {"zone": None, "confidence": 0.0, "method": "decode_failed"}
-
-            # Method 1: Color-based detection (Pattern #4 Step 1)
-            result = self._detect_arrow_color(image)
-            if result["confidence"] > 0.7:
-                logger.info("arrow_detected_by_color", zone=result["zone"], confidence=result["confidence"])
-                return result
-
-            # Method 2: Edge-based detection (Pattern #4 Step 2)
-            result = self._detect_arrow_edge(image)
-            if result["confidence"] > 0.7:
-                logger.info("arrow_detected_by_edge", zone=result["zone"], confidence=result["confidence"])
-                return result
-
-            # Method 3: ML-based detection (Pattern #4 Step 3 - placeholder)
-            result = self._detect_arrow_ml(image)
-            if result["confidence"] > 0.5:
-                logger.info("arrow_detected_by_ml", zone=result["zone"], confidence=result["confidence"])
-                return result
-
-            # All methods failed
-            logger.warning("arrow_detection_failed")
-            return {"zone": None, "confidence": 0.0, "method": "failed"}
-
-        except Exception as e:
-            logger.exception("arrow_detection_error", error=str(e))
-            return {"zone": None, "confidence": 0.0, "method": "error"}
+            result = _arrow_detector.detect(
+                image_data=image_data,
+                image_path=image_path,
+            )
+            output = result.to_dict()
+            logger.info(
+                "arrow_detection_complete",
+                zone=output["zone"],
+                confidence=output["confidence"],
+                method=output["method"],
+            )
+            return output
+        except Exception as exc:
+            logger.exception("arrow_detection_error", error=str(exc))
+            return {"zone": None, "points": None, "confidence": 0.0, "method": "error"}
 
     def _detect_arrow_color(self, image: np.ndarray) -> Dict[str, Any]:
         """Color-based arrow detection (HSV range)."""
@@ -178,12 +155,15 @@ class ImageService:
             logger.warning("edge_detection_error", error=str(e))
             return {"zone": None, "confidence": 0.0, "method": "edge_error"}
 
-    def _detect_arrow_ml(self, image: np.ndarray) -> Dict[str, Any]:
-        """ML-based arrow detection (placeholder - would use trained model)."""
-        # Placeholder for ML detection
-        # In production, would use a pre-trained YOLO or custom CNN model
-        logger.debug("ml_detection_placeholder")
-        return {"zone": None, "confidence": 0.0, "method": "ml"}
+    # NOTE: _detect_arrow_color, _detect_arrow_edge, and _detect_arrow_ml
+    # are superseded by ArrowDetectionService (arrow_detection_service.py).
+    # All detection logic is now consolidated there with:
+    #   - HoughCircles target detection
+    #   - Color segmentation arrow detection
+    #   - HoughLinesP shaft detection
+    #   - Contour aspect-ratio arrow detection
+    #   - WA standard zone calculation
+    # These legacy methods are kept below for backward compatibility only.
 
     def _estimate_zone_from_coordinates(
         self, x: int, y: int, image_shape: Tuple[int, int]

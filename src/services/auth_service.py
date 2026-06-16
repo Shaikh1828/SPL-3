@@ -96,7 +96,7 @@ class AuthService:
             return None
 
         # Generate tokens
-        access_token = create_access_token(user.id)
+        access_token = create_access_token(user.id, role=user.role)
         refresh_token = create_refresh_token(user.id)
 
         logger.info("user_login_success", user_id=user.id, username=username)
@@ -127,12 +127,13 @@ class AuthService:
         return user_id
 
     @staticmethod
-    def refresh_access_token(refresh_token: str) -> Optional[str]:
+    def refresh_access_token(refresh_token: str, db: Session = None) -> Optional[str]:
         """
         Generate a new access token from a refresh token.
 
         Args:
             refresh_token: Refresh token string
+            db: Database session (optional, used to lookup current role)
 
         Returns:
             New access token or None if refresh token invalid
@@ -147,7 +148,14 @@ class AuthService:
             logger.warning("refresh_token_decode_failed")
             return None
 
-        new_access_token = create_access_token(user_id)
+        # Look up current role from DB if session provided
+        role = "spectator"
+        if db is not None:
+            user = db.query(User).filter(User.id == user_id).first()
+            if user:
+                role = user.role
+
+        new_access_token = create_access_token(user_id, role=role)
         logger.info("access_token_refreshed", user_id=user_id)
         return new_access_token
 

@@ -15,7 +15,7 @@ import structlog
 
 from src.database import get_db
 from src.services.auth_service import AuthService
-from src.schemas import UserCreate, UserResponse, LoginRequest, LoginResponse, PasswordResetRequest
+from src.schemas import UserCreate, UserResponse, LoginRequest, LoginResponse, PasswordResetRequest, RefreshRequest
 from src.dependencies import get_current_user
 from src.models.user import User
 
@@ -112,14 +112,15 @@ async def login(credentials: LoginRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/refresh", response_model=LoginResponse)
-async def refresh_token(credentials: dict):
+async def refresh_token(body: RefreshRequest, db: Session = Depends(get_db)):
     """
     Refresh access token using refresh token.
 
     Story: US-1.2
 
     Args:
-        credentials: Dictionary with refresh_token
+        body: Body containing refresh_token string
+        db: Database session
 
     Returns:
         New access token
@@ -128,14 +129,9 @@ async def refresh_token(credentials: dict):
         HTTPException: 401 if refresh token invalid
     """
     try:
-        refresh_token_str = credentials.get("refresh_token")
-        if not refresh_token_str:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="refresh_token required",
-            )
+        refresh_token_str = body.refresh_token
 
-        new_access_token = AuthService.refresh_access_token(refresh_token_str)
+        new_access_token = AuthService.refresh_access_token(refresh_token_str, db)
 
         if not new_access_token:
             raise HTTPException(

@@ -8,7 +8,7 @@ Endpoints:
 - GET /tournaments/{tournament_id}
 """
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 import structlog
@@ -24,7 +24,7 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
 
 
-@router.get("", response_model=List[TournamentResponse])
+@router.get("", response_model=Dict[str, Any])
 async def list_tournaments(
     db: Session = Depends(get_db),
     skip: int = Query(0, ge=0),
@@ -51,10 +51,14 @@ async def list_tournaments(
         if search:
             query = query.filter(Tournament.name.contains(search))
 
+        total = query.count()
         tournaments = query.order_by(Tournament.created_at.desc()).offset(skip).limit(limit).all()
 
-        logger.info("tournaments_listed", count=len(tournaments))
-        return tournaments
+        # Serialize manually to get list of dicts
+        items = [TournamentResponse.model_validate(t).model_dump() for t in tournaments]
+
+        logger.info("tournaments_listed", count=len(items))
+        return {"items": items, "total": total, "skip": skip, "limit": limit}
 
     except Exception as e:
         logger.exception("list_tournaments_error", error=str(e))

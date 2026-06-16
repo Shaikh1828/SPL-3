@@ -9,6 +9,7 @@ from src.services.image_service import ImageService
 from src.services.leaderboard_service import LeaderboardService, leaderboard_service
 from src.services.report_service import ReportService
 from src.services.health_service import HealthService
+from src.services.arrow_detection_service import ArrowDetectionService
 
 __all__ = [
     "AuthService",
@@ -19,4 +20,5 @@ __all__ = [
     "leaderboard_service",
     "ReportService",
     "HealthService",
+    "ArrowDetectionService",
 ]

@@ -10,7 +10,7 @@ import { sessionsApi } from '@/api/sessions'
 import { tournamentsApi } from '@/api/tournaments'
 import { useSessionStore } from '@/store/sessionStore'
 import { useScoreStream } from '@/hooks/useScoreStream'
-import type { DetailedHealth, Leaderboard, Tournament, Session } from '@/types'
+import type { DetailedHealth, LeaderboardEntry, Tournament, Session } from '@/types'
 import { cn, formatDate } from '@/lib/utils'
 
 function StatCard({ icon: Icon, label, value, sub, color = 'gold' }: {
@@ -42,7 +42,7 @@ export default function DashboardPage() {
   const navigate = useNavigate()
   const { activeSession, setActiveSession, setActiveTournament } = useSessionStore()
   const [health, setHealth] = useState<DetailedHealth | null>(null)
-  const [leaderboard, setLeaderboard] = useState<Leaderboard | null>(null)
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[] | null>(null)
   const [tournaments, setTournaments] = useState<Tournament[]>([])
   const [sessions, setSessions] = useState<Session[]>([])
 
@@ -61,13 +61,15 @@ export default function DashboardPage() {
     try {
       await fetchHealth()
       const t = await tournamentsApi.list({ limit: 5 })
-      setTournaments(t.items)
-      if (t.items.length > 0) {
-        const s = await sessionsApi.listForTournament(t.items[0].id, { status: 'active' })
-        setSessions(s.items)
-        if (s.items.length > 0 && !activeSession) {
-          setActiveSession(s.items[0])
-          setActiveTournament(t.items[0])
+      const tournamentsList = Array.isArray(t) ? t : (t && Array.isArray(t.items) ? t.items : [])
+      setTournaments(tournamentsList)
+      if (tournamentsList.length > 0) {
+        const s = await sessionsApi.listForTournament(tournamentsList[0].id, { status: 'active' })
+        const sessionsList = Array.isArray(s) ? s : (s && Array.isArray(s.items) ? s.items : [])
+        setSessions(sessionsList)
+        if (sessionsList.length > 0 && !activeSession) {
+          setActiveSession(sessionsList[0])
+          setActiveTournament(tournamentsList[0])
         }
       }
     } catch (err) {
@@ -115,7 +117,7 @@ export default function DashboardPage() {
         <StatCard
           icon={Activity}
           label="Total Archers"
-          value={leaderboard?.total_archers ?? '—'}
+          value={leaderboard?.length ?? '—'}
           sub={activeSession?.name}
           color="blue"
         />
@@ -140,9 +142,9 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {leaderboard?.items.length ? (
+          {leaderboard && leaderboard.length > 0 ? (
             <div className="space-y-2">
-              {leaderboard.items.slice(0, 8).map((entry) => (
+              {leaderboard.slice(0, 8).map((entry) => (
                 <div
                   key={entry.archer_id}
                   className={cn(
