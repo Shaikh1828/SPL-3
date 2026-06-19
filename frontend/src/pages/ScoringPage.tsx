@@ -7,6 +7,7 @@ import { sessionsApi } from '@/api/sessions'
 import { useSessionStore } from '@/store/sessionStore'
 import { useCameraStore } from '@/store/cameraStore'
 import { useCameraPreview } from '@/hooks/useCameraPreview'
+import { ScoreDetailsModal } from '@/components/scores/ScoreDetailsModal'
 import toast from 'react-hot-toast'
 import { cn, getConfidenceColor } from '@/lib/utils'
 import type { Camera, CameraLaneAssignment, Score, SessionArcher } from '@/types'
@@ -47,7 +48,8 @@ function ScoringLane({
   onCalculate, 
   onUploadImage,
   isCalculating,
-  lastScore
+  lastScore,
+  onViewImage
 }: { 
   assignment: CameraLaneAssignment, 
   camera?: Camera,
@@ -55,7 +57,8 @@ function ScoringLane({
   onCalculate: (cameraId: number, laneId: number) => void,
   onUploadImage: (laneId: number, file: File) => void,
   isCalculating: boolean,
-  lastScore?: Score | null
+  lastScore?: Score | null,
+  onViewImage: (score: Score) => void
 }) {
   return (
     <div className="glass-card p-4 flex flex-col gap-4">
@@ -120,7 +123,12 @@ function ScoringLane({
           </div>
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span>Arrow {lastScore.arrow_num} / Round {lastScore.round}</span>
-            <button className="text-gold-400 hover:text-gold-300">View Image</button>
+            <button 
+              onClick={() => onViewImage(lastScore)}
+              className="text-gold-400 hover:text-gold-300 font-semibold"
+            >
+              View Image
+            </button>
           </div>
         </div>
       )}
@@ -136,6 +144,10 @@ export default function ScoringPage() {
   const [archers, setArchers] = useState<SessionArcher[]>([])
   const [calculating, setCalculating] = useState<Record<number, boolean>>({})
   const [lastScores, setLastScores] = useState<Record<number, Score | null>>({})
+
+  // Modal states
+  const [selectedScore, setSelectedScore] = useState<Score | null>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   // Archer Modal state
   const [isAddArcherOpen, setIsAddArcherOpen] = useState(false)
@@ -354,6 +366,10 @@ export default function ScoringPage() {
                   onUploadImage={handleUploadImage}
                   isCalculating={calculating[assignment.lane] || false}
                   lastScore={lastScores[assignment.lane]}
+                  onViewImage={(score) => {
+                    setSelectedScore(score)
+                    setIsModalOpen(true)
+                  }}
                 />
               )
             })}
@@ -457,6 +473,34 @@ export default function ScoringPage() {
           </div>
         </div>
       )}
+
+      {/* Score details and override modal */}
+      <ScoreDetailsModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false)
+          setSelectedScore(null)
+        }}
+        score={selectedScore}
+        onOverrideSuccess={async () => {
+          // Refresh archers & lanes
+          await loadData()
+          if (selectedScore) {
+            try {
+              const updated = await scoresApi.get(selectedScore.id)
+              setLastScores(prev => {
+                const next = { ...prev }
+                for (const laneId in next) {
+                  if (next[laneId]?.id === updated.id) {
+                    next[laneId] = updated
+                  }
+                }
+                return next
+              })
+            } catch {}
+          }
+        }}
+      />
     </div>
   )
 }

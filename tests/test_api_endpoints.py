@@ -312,7 +312,7 @@ class TestScoreAPI:
         import os
         
         # Create a temp directory inside workspace
-        temp_dir = tempfile.mkdtemp(dir="d:\\Git\\SPL-3")
+        temp_dir = tempfile.mkdtemp(dir=".")
         try:
             # Create mock images
             mock_image = b"\xff\xd8\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\' \",#\x1c\x1c(7),01444\x1f\'9=82<.342\xff\xc0\x00\x0b\x08\x00\x01\x00\x01\x01\x01\x11\x00\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xbf\x00\xff\xd9"
@@ -358,6 +358,63 @@ class TestScoreAPI:
             
         finally:
             shutil.rmtree(temp_dir)
+
+    def test_get_score_image_not_found(
+        self, test_client: TestClient, test_score, auth_headers
+    ):
+        """Test getting score image when file does not exist."""
+        # Score does not have image_id
+        response = test_client.get(f"/api/scores/{test_score.id}/image", headers=auth_headers)
+        assert response.status_code == 400  # "Score does not have an associated image"
+
+    def test_override_score_forbidden(
+        self, test_client: TestClient, test_score, auth_headers
+    ):
+        """Test that scorer cannot override score."""
+        response = test_client.put(
+            f"/api/scores/{test_score.id}/override",
+            json={"zone": 10, "points": 10, "reason": "Manually corrected"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 403
+
+    def test_override_score_admin_success(
+        self, test_client: TestClient, test_db, test_score, admin_auth_headers
+    ):
+        """Test that admin can override score and it updates the total score and audit log."""
+        # Get session archer initial total score
+        session_archer = test_score.session_archer
+        initial_score = session_archer.total_score
+        
+        response = test_client.put(
+            f"/api/scores/{test_score.id}/override",
+            json={"zone": 10, "points": 10, "reason": "Manually corrected"},
+            headers=admin_auth_headers,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["zone"] == 10
+        assert data["points"] == 10
+        
+        # Verify database update
+        test_db.refresh(test_score)
+        test_db.refresh(session_archer)
+        assert test_score.points == 10
+        
+        # Recalculate diff
+        assert session_archer.total_score == recalculated_total_helper(test_db, session_archer.id)
+        
+        # Verify AuditLog entry
+        from src.models.audit import AuditLog
+        audit = test_db.query(AuditLog).filter(AuditLog.resource_id == test_score.id, AuditLog.action == "score_override").first()
+        assert audit is not None
+        assert "old_points" in audit.details
+        assert "Manually corrected" in audit.details
+
+def recalculated_total_helper(db, session_archer_id):
+    from src.models.scoring import Score
+    from sqlalchemy import func
+    return db.query(func.sum(Score.points)).filter(Score.session_archer_id == session_archer_id).scalar() or 0
 
 
 # ============================================================================

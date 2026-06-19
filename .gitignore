@@ -136,3 +136,7 @@ dmypy.json
 poetry.lock
 Data/data.yaml
 Data
+frontend/TestImages/*.jpg
+frontend/TestImages/*.png
+frontend/TestImages/*.jpeg
+frontend/TestImages/20251011_102851_jpg.rf.8a40d029170d95688b1adecb5dd25746.jpg

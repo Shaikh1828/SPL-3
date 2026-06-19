@@ -1398,3 +1398,44 @@ Executive summary of session work and next steps
 User has complete testing and deployment documentation. System is verified production-ready with all 40 AIDLC steps complete, all code generation done, all tests documented, and comprehensive operational guides provided. Ready for team handoff, testing, and deployment.
 
 ---
+
+## Post-Construction Enhancement — Arrow Scoring Detection Accuracy (2026-06-18)
+
+**Timestamp**: 2026-06-18T00:00:00+06:00  
+**Request**: Implement paper-based algorithm improvements (Safri et al., JAIC 2025, pp. 3669–3680) to fix false positives in arrow scoring detection  
+**Triggered by**: User observing 5941 total points / 908 arrows being incorrectly detected for a single target image (screenshot in context)
+
+### Root Cause Analysis
+
+**Bug 1 — Target Radius 2× Overestimation**  
+In `_target_by_color_bands`, the yellow gold region (Zones 9–10) outer boundary was misidentified as the Zone 10 inner boundary. The code divided `bullseye_r` by `0.096` (Zone 10 outer = 9.6%) when it should have divided by `0.192` (Zone 9 outer = 19.2% — the true extent of the yellow zone). This caused the calculated target radius to be **exactly twice as large as the real target**, making all zone boundaries incorrect and inflating scores.
+
+**Bug 2 — Tangent Ring Lines Detected as Arrows**  
+HoughLinesP detects thousands of tiny tangent line segments along concentric target rings. Without filtering, every tangent segment was treated as an arrow shaft, leading to hundreds of false arrow tips detected around each ring arc.
+
+### Changes Made
+
+**`src/services/arrow_detection_service.py`**:
+1. Fixed `_target_by_color_bands`: Changed divisor from `0.096` → `0.192`, added circularity scoring for robust bullseye selection
+2. Added `_merge_lines(lines, dist_thresh=15, ang_thresh=8)`: Merges collinear/overlapping Hough line segments into single long shaft lines
+3. Updated `_arrows_by_hough_lines`: Added ROI masking, merged lines via `_merge_lines`, applied `cos_theta >= 0.96` radial constraint, filtered vertical/horizontal gridlines (angle < 6° or > 174° or 84–96°), enforced `tip_dist <= outer_radius * 0.98`
+4. Updated `_arrows_by_color`: Added `cv2.fitLine`-based radial constraint and tip distance cutoff
+5. Updated `_arrows_by_contour`: Added ROI masking, `cv2.fitLine`-based radial constraint, and tip distance cutoff
+6. Increased NMS distance threshold from 20px → 40px
+
+**`tests/test_services.py`**:
+- Added `test_detect_test_images`: Runs the full detection pipeline on the first 3 test images in `tests/TestImages`, asserts `target.confidence > 0.25`, `len(arrows) > 0`, and `zone is not None`
+
+### Verification Results
+
+```
+pytest tests/ -v
+====================== 57 passed, 12 warnings in 26.06s ======================
+```
+
+- All 56 previously passing tests: ✅ Still passing  
+- New `test_detect_test_images`: ✅ PASSED
+
+**Status**: ✅ COMPLETE
+
+---

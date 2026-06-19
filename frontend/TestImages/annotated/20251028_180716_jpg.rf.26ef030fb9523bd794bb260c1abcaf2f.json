@@ -1,0 +1,17 @@
+{
+  "zone": 1,
+  "points": 1,
+  "confidence": 0.3629,
+  "method": "fallback_dark_cluster+zone_ellipses_red",
+  "distance_ratio": 0.9386,
+  "target_center": [
+    436.6789245605469,
+    616.1748657226562
+  ],
+  "target_radius": 117.02501773834229,
+  "a_outer": 144.13827657699585,
+  "b_outer": 89.91175889968872,
+  "angle": 58.43764877319335,
+  "arrow_tip": null,
+  "arrows": []
+}

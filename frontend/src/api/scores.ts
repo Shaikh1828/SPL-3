@@ -29,4 +29,11 @@ export const scoresApi = {
 
   validate: (scoreId: number, data: ScoreValidate) =>
     apiClient.post<Score>(`/scores/${scoreId}/validate`, data).then((r) => r.data),
+
+  getRawImageUrl: (scoreId: number) => `/scores/${scoreId}/image`,
+
+  getAnnotatedImageUrl: (scoreId: number) => `/scores/${scoreId}/image-annotated`,
+
+  override: (scoreId: number, data: { zone: number; points: number; reason?: string }) =>
+    apiClient.put<Score>(`/scores/${scoreId}/override`, data).then((r) => r.data),
 }

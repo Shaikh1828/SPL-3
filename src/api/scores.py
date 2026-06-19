@@ -13,17 +13,21 @@ Endpoints:
 
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session as SQLSession
 import structlog
 import asyncio
 import os
+import json
+import base64
 
 from src.database import get_db
-from src.schemas import ScoreCreate, ScoreResponse, ScoreValidateRequest, BatchDirectoryRequest
+from src.schemas import ScoreCreate, ScoreResponse, ScoreValidateRequest, BatchDirectoryRequest, ScoreOverrideRequest
 from src.dependencies import get_current_user
 from src.models.user import User
 from src.models.scoring import Score, SessionArcher
 from src.models.tournament import Session
+from src.models.audit import AuditLog
 from src.services.scoring_service import ScoringService
 from src.services.image_service import ImageService
 from src.thread_pool import get_executor
@@ -170,13 +174,30 @@ async def upload_score_image(
 
         zone = detection.get("zone")
         confidence = detection.get("confidence", 0.0)
-        
-        # Fallback zone if detection returned None
         if zone is None:
             zone = 0
         points = zone
 
+        arrows = detection.get("arrows", [])
+        if not arrows:
+            # Fallback to single/none detection
+            arrows = [{"zone": zone, "points": points, "confidence": confidence}]
+
+        total_points = sum(arr.get("points") or 0 for arr in arrows)
+        total_zone = sum(arr.get("zone") or 0 for arr in arrows)
+        avg_confidence = sum(arr.get("confidence") or 0.0 for arr in arrows) / len(arrows)
+
         if session_archer_id <= 0:
+            # Generate annotated image for dry run preview
+            annotated_bytes = await loop.run_in_executor(
+                get_executor(),
+                image_service.generate_annotated_image,
+                file_bytes,
+                detection
+            )
+            annotated_base64 = None
+            if annotated_bytes:
+                annotated_base64 = f"data:image/jpeg;base64,{base64.b64encode(annotated_bytes).decode('utf-8')}"
             # Dry run mode: return synthetic response without writing to database
             return {
                 "id": 0,
@@ -184,13 +205,14 @@ async def upload_score_image(
                 "session_archer_id": 0,
                 "round": round,
                 "arrow_num": 0,
-                "zone": zone,
-                "points": points,
+                "zone": total_zone,
+                "points": total_points,
                 "image_id": None,
-                "confidence": confidence,
+                "confidence": avg_confidence,
                 "validated_by_ai": False,
                 "created_at": None,
-                "method": detection.get("method", "unknown")
+                "method": detection.get("method", "unknown"),
+                "annotated_image": annotated_base64
             }
 
         # Verify session archer exists
@@ -205,7 +227,7 @@ async def upload_score_image(
                 detail="Archer not found in session",
             )
 
-        # Determine arrow number sequentially if not provided
+        # Determine start arrow number sequentially if not provided
         if arrow_num is None:
             existing_count = db.query(Score).filter(
                 Score.session_archer_id == session_archer_id,
@@ -223,38 +245,61 @@ async def upload_score_image(
             arrow_num
         )
 
-        # Record score in the database
-        score = ScoringService.record_score_with_retry(
-            db,
-            session_archer_id,
-            round,
-            arrow_num,
-            zone,
-            points,
+        # Save annotated image
+        await loop.run_in_executor(
+            get_executor(),
+            image_service.save_annotated_image,
+            file_bytes,
+            session_id,
             image_id,
-            confidence,
-            max_retries=2,
-            base_backoff=1.0,
+            detection
         )
 
-        if not score:
+        # Record each score in the database
+        last_score = None
+        for idx, arr in enumerate(arrows):
+            arr_zone = arr.get("zone") or 0
+            arr_points = arr.get("points") or 0
+            arr_conf = arr.get("confidence") or 0.0
+            curr_arrow_num = arrow_num + idx
+            
+            score = ScoringService.record_score_with_retry(
+                db,
+                session_archer_id,
+                round,
+                curr_arrow_num,
+                arr_zone,
+                arr_points,
+                image_id,
+                arr_conf,
+                max_retries=2,
+                base_backoff=1.0,
+            )
+            if score:
+                last_score = score
+
+        if not last_score:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to record score in the database",
             )
 
-        score.method = detection.get("method", "unknown")
+        # For response to UI, set zone/points/confidence to the aggregated values
+        last_score.zone = total_zone
+        last_score.points = total_points
+        last_score.confidence = avg_confidence
+        last_score.method = detection.get("method", "unknown")
 
         logger.info(
             "score_recorded_via_upload",
             session_id=session_id,
             archer_id=session_archer.archer_id,
-            points=points,
-            confidence=confidence,
+            points=total_points,
+            confidence=avg_confidence,
             image_id=image_id,
         )
 
-        return score
+        return last_score
 
     except HTTPException:
         raise
@@ -331,13 +376,16 @@ async def batch_score_directory(
                 img_bytes
             )
 
-            zone = detection.get("zone")
-            confidence = detection.get("confidence", 0.0)
             method = detection.get("method", "unknown")
+            arrows = detection.get("arrows", [])
+            if not arrows:
+                zone = detection.get("zone", 0)
+                points = zone if zone is not None else 0
+                arrows = [{"zone": zone, "points": points, "confidence": detection.get("confidence", 0.0)}]
 
-            if zone is None:
-                zone = 0
-            points = zone
+            total_points = sum(arr.get("points") or 0 for arr in arrows)
+            total_zone = sum(arr.get("zone") or 0 for arr in arrows)
+            avg_confidence = sum(arr.get("confidence") or 0.0 for arr in arrows) / len(arrows)
 
             score_id = None
             image_id = None
@@ -379,32 +427,59 @@ async def batch_score_directory(
                     arrow_num
                 )
 
-                # Record score in the database
-                score = ScoringService.record_score_with_retry(
-                    db,
-                    request_data.session_archer_id,
-                    request_data.round,
-                    arrow_num,
-                    zone,
-                    points,
+                # Save annotated image
+                await loop.run_in_executor(
+                    get_executor(),
+                    image_service.save_annotated_image,
+                    img_bytes,
+                    session_id,
                     image_id,
-                    confidence,
-                    max_retries=2,
-                    base_backoff=1.0,
+                    detection
                 )
-                if score:
-                    score_id = score.id
+
+                # Record each score in the database
+                for idx, arr in enumerate(arrows):
+                    arr_zone = arr.get("zone") or 0
+                    arr_points = arr.get("points") or 0
+                    arr_conf = arr.get("confidence") or 0.0
+                    curr_arrow_num = arrow_num + idx
+                    
+                    score = ScoringService.record_score_with_retry(
+                        db,
+                        request_data.session_archer_id,
+                        request_data.round,
+                        curr_arrow_num,
+                        arr_zone,
+                        arr_points,
+                        image_id,
+                        arr_conf,
+                        max_retries=2,
+                        base_backoff=1.0,
+                    )
+                    if score:
+                        score_id = score.id
+
+            annotated_base64 = None
+            annotated_bytes = await loop.run_in_executor(
+                get_executor(),
+                image_service.generate_annotated_image,
+                img_bytes,
+                detection
+            )
+            if annotated_bytes:
+                annotated_base64 = f"data:image/jpeg;base64,{base64.b64encode(annotated_bytes).decode('utf-8')}"
 
             results.append({
                 "filename": filename,
                 "path": img_path,
-                "zone": zone,
-                "points": points,
-                "confidence": confidence,
+                "zone": total_zone,
+                "points": total_points,
+                "confidence": avg_confidence,
                 "method": method,
                 "image_id": image_id,
                 "score_id": score_id,
                 "status": "success",
+                "annotated_image": annotated_base64,
             })
 
         except Exception as e:
@@ -570,4 +645,180 @@ async def validate_score_record(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to validate score",
+        )
+
+
+@router.get("/scores/{score_id}/image")
+async def get_score_image(
+    score_id: int,
+    current_user: User = Depends(get_current_user),
+    db: SQLSession = Depends(get_db),
+):
+    """
+    Get the raw image of a score.
+    """
+    score = db.query(Score).filter(Score.id == score_id).first()
+    if not score:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Score not found",
+        )
+    if not score.image_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Score does not have an associated image",
+        )
+        
+    image_service = ImageService()
+    image_path = os.path.join(image_service.storage_path, "raw", str(score.session_id), f"{score.image_id}.jpg")
+    
+    if not os.path.exists(image_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Raw image file not found",
+        )
+        
+    return FileResponse(image_path, media_type="image/jpeg")
+
+
+@router.get("/scores/{score_id}/image-annotated")
+async def get_score_image_annotated(
+    score_id: int,
+    current_user: User = Depends(get_current_user),
+    db: SQLSession = Depends(get_db),
+):
+    """
+    Get the annotated image of a score.
+    """
+    score = db.query(Score).filter(Score.id == score_id).first()
+    if not score:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Score not found",
+        )
+    if not score.image_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Score does not have an associated image",
+        )
+        
+    image_service = ImageService()
+    image_path = os.path.join(image_service.storage_path, "annotated", str(score.session_id), f"{score.image_id}.jpg")
+    
+    if not os.path.exists(image_path):
+        # Fallback: if annotated image is missing, try raw image
+        fallback_path = os.path.join(image_service.storage_path, "raw", str(score.session_id), f"{score.image_id}.jpg")
+        if os.path.exists(fallback_path):
+            return FileResponse(fallback_path, media_type="image/jpeg")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Annotated image file not found",
+        )
+        
+    return FileResponse(image_path, media_type="image/jpeg")
+
+
+@router.put("/scores/{score_id}/override", response_model=ScoreResponse)
+async def override_score_record(
+    score_id: int,
+    override_data: ScoreOverrideRequest,
+    current_user: User = Depends(get_current_user),
+    db: SQLSession = Depends(get_db),
+):
+    """
+    Override a score record. Can only be performed by an admin.
+    """
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can override scores",
+        )
+        
+    # Validate score
+    is_valid, error_msg = ScoringService.validate_score(override_data.zone, override_data.points)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_msg,
+        )
+        
+    score = db.query(Score).filter(Score.id == score_id).first()
+    if not score:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Score not found",
+        )
+        
+    old_zone = score.zone
+    old_points = score.points
+    
+    try:
+        # Update score
+        score.zone = override_data.zone
+        score.points = override_data.points
+        score.validated_by_ai = False  # Set to False because it's manually overridden
+        db.commit()
+        
+        # Recalculate session archer's total score
+        session_archer = db.query(SessionArcher).filter(SessionArcher.id == score.session_archer_id).first()
+        if session_archer:
+            from sqlalchemy import func
+            total_points = db.query(func.sum(Score.points)).filter(Score.session_archer_id == session_archer.id).scalar() or 0
+            session_archer.total_score = total_points
+            db.commit()
+            
+        # Record audit log
+        details = json.dumps({
+            "old_zone": old_zone,
+            "old_points": old_points,
+            "new_zone": override_data.zone,
+            "new_points": override_data.points,
+            "reason": override_data.reason
+        })
+        audit = AuditLog(
+            user_id=current_user.id,
+            action="score_override",
+            resource_type="score",
+            resource_id=score_id,
+            details=details
+        )
+        db.add(audit)
+        db.commit()
+        
+        # Emit event for real-time WebSocket stream
+        publish_event(
+            EventType.SCORE_RECORDED,
+            {
+                "score_id": score.id,
+                "session_archer_id": score.session_archer_id,
+                "session_id": score.session_id,
+                "zone": override_data.zone,
+                "points": override_data.points,
+                "round": score.round,
+                "is_override": True,
+            },
+        )
+        
+        # Invalidate leaderboard cache
+        from src.cache import invalidate_leaderboard_cache
+        invalidate_leaderboard_cache(score.session_id)
+        
+        db.refresh(score)
+        
+        logger.info(
+            "score_overridden_via_api",
+            score_id=score_id,
+            old_points=old_points,
+            new_points=override_data.points,
+            admin_id=current_user.id
+        )
+        
+        return score
+        
+    except Exception as e:
+        db.rollback()
+        logger.exception("override_score_error", score_id=score_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to override score",
         )

@@ -1,0 +1,66 @@
+{
+  "zone": 9,
+  "points": 9,
+  "confidence": 0.9004,
+  "method": "geometric_dark_ring_boundary+zone_blend+puncture_hole",
+  "distance_ratio": 0.1407,
+  "target_center": [
+    371.5234130859375,
+    300.1547607421875
+  ],
+  "target_radius": 349.1003875732422,
+  "a_outer": 391.8372802734375,
+  "b_outer": 306.3634948730469,
+  "angle": 92.7602310180664,
+  "arrow_tip": [
+    381.0470588235294,
+    246.12235294117647
+  ],
+  "arrows": [
+    {
+      "tip_x": 381.0470588235294,
+      "tip_y": 246.12235294117647,
+      "confidence": 0.85,
+      "method": "puncture_hole",
+      "shaft_angle": 90.0,
+      "zone": 9,
+      "points": 9
+    },
+    {
+      "tip_x": 370.3764705882353,
+      "tip_y": 494.2470588235294,
+      "confidence": 0.85,
+      "method": "puncture_hole",
+      "shaft_angle": 111.80140686035156,
+      "zone": 5,
+      "points": 5
+    },
+    {
+      "tip_x": 269.4559721011334,
+      "tip_y": 650.6948561464691,
+      "confidence": 0.85,
+      "method": "puncture_hole",
+      "shaft_angle": 93.2704849243164,
+      "zone": 1,
+      "points": 1
+    },
+    {
+      "tip_x": 582.12744140625,
+      "tip_y": 265.5775146484375,
+      "confidence": 0.5108,
+      "method": "sift",
+      "shaft_angle": null,
+      "zone": 3,
+      "points": 3
+    },
+    {
+      "tip_x": 564.0237426757812,
+      "tip_y": 179.4981689453125,
+      "confidence": 0.5108,
+      "method": "sift",
+      "shaft_angle": null,
+      "zone": 3,
+      "points": 3
+    }
+  ]
+}

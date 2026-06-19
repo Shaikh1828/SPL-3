@@ -280,3 +280,48 @@ class TestHealthService:
         assert "used_gb" in health
         assert "quota_gb" in health
         assert health["usage_percent"] >= 0
+
+
+# ============================================================================
+# ArrowDetectionService Tests
+# ============================================================================
+
+
+class TestArrowDetectionService:
+    """Unit tests for ArrowDetectionService."""
+
+    def test_detect_null_inputs(self):
+        """Test that ArrowDetectionService handles null inputs gracefully."""
+        from src.services.arrow_detection_service import ArrowDetectionService
+        
+        service = ArrowDetectionService()
+        result = service.detect(image_data=None, image_path=None)
+        
+        assert result.zone is None
+        assert result.points is None
+        assert result.confidence == 0.0
+        assert result.method == "image_load_failed"
+
+    def test_detect_test_images(self):
+        """Test that ArrowDetectionService correctly detects targets and arrows on sample images."""
+        from src.services.arrow_detection_service import ArrowDetectionService
+        import os
+        
+        service = ArrowDetectionService()
+        test_folder = "tests/TestImages"
+        if not os.path.exists(test_folder):
+            pytest.skip("Test images folder not found")
+            
+        images = [f for f in os.listdir(test_folder) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+        if not images:
+            pytest.skip("No test images found")
+            
+        # Test first few images
+        for img_name in images[:3]:
+            img_path = os.path.join(test_folder, img_name)
+            result = service.detect(image_path=img_path)
+            
+            assert result.target is not None
+            assert result.target.confidence > 0.25
+            assert len(result.arrows) > 0
+            assert result.zone is not None

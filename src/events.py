@@ -132,7 +132,16 @@ class EventBus:
 
         for handler in handlers:
             try:
-                handler(event)
+                import inspect
+                import asyncio
+                if inspect.iscoroutinefunction(handler):
+                    try:
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(handler(event))
+                    except RuntimeError:
+                        asyncio.run(handler(event))
+                else:
+                    handler(event)
             except Exception as e:
                 logger.exception("event_handler_error", handler=handler.__name__, error=str(e))
 

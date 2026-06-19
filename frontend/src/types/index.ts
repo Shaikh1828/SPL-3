@@ -116,6 +116,7 @@ export interface Score {
   method?: string
   created_at: string
   updated_at: string
+  annotated_image?: string
 }
 
 export interface ScoreCreate {

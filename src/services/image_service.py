@@ -355,3 +355,174 @@ class ImageService:
             )
 
         return archived_count
+
+    def generate_annotated_image(
+        self, image_data: bytes, detection: Dict[str, Any]
+    ) -> Optional[bytes]:
+        """
+        Draw target rings (ellipse-aware), arrow tips, and metadata onto the image.
+        Uses a_outer/b_outer/angle from detection for accurate perspective-correct rings.
+        Rings drawn in proper WA color (gold/red/blue/black/white).
+        Arrow markers color-coded by confidence (green>=0.85, yellow>=0.60, red<0.60).
+        """
+        if not cv2 or not np:
+            return None
+        try:
+            import math as _math
+            nparr = np.frombuffer(image_data, np.uint8)
+            image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            if image is None:
+                return None
+
+            target_center = detection.get("target_center")
+            target_radius  = detection.get("target_radius")
+            zone           = detection.get("zone")
+            confidence     = detection.get("confidence", 0.0)
+            method         = detection.get("method", "unknown")
+            # Ellipse axes from backend (fallback to circular if missing)
+            a_outer = detection.get("a_outer") or target_radius
+            b_outer = detection.get("b_outer") or target_radius
+            angle   = detection.get("angle") or 0.0
+
+            h, w = image.shape[:2]
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = max(0.45, min(w, h) / 1100.0)
+            text_thick  = max(1, int(font_scale * 2))
+
+            # ── Draw concentric elliptical rings ─────────────────────────────
+            if target_center and target_radius and a_outer and b_outer:
+                cx = int(target_center[0])
+                cy = int(target_center[1])
+                # WA boundary ratios, BGR color, label
+                # Colors: Gold=(0,215,255), Red=(0,0,200), Blue=(200,100,0)
+                #         Black=(50,50,50), White=(220,220,220)
+                ring_specs = [
+                    (0.048, (0, 215, 255), "X"),
+                    (0.096, (0, 215, 255), "10"),
+                    (0.192, (0, 215, 255), "9"),
+                    (0.288, (30,  30, 220), "8"),
+                    (0.384, (30,  30, 220), "7"),
+                    (0.480, (200, 100, 10), "6"),
+                    (0.576, (200, 100, 10), "5"),
+                    (0.672, (55,  55,  55), "4"),
+                    (0.768, (55,  55,  55), "3"),
+                    (0.864, (210, 210, 210), "2"),
+                    (0.960, (210, 210, 210), "1"),
+                ]
+                thick = max(1, int(min(a_outer, b_outer) * 0.005))
+                for ratio, color, lbl in ring_specs:
+                    ra = int(a_outer * ratio)
+                    rb = int(b_outer * ratio)
+                    if ra > 1 and rb > 1:
+                        cv2.ellipse(
+                            image, (cx, cy), (ra, rb),
+                            angle, 0, 360, color, thick
+                        )
+                        # Zone label at right edge of each ellipse
+                        lx = int(cx + ra * _math.cos(_math.radians(angle)) + 4)
+                        ly = int(cy - rb * _math.sin(_math.radians(angle)))
+                        cv2.putText(image, lbl, (lx, ly), font,
+                                    font_scale * 0.55, color, 1)
+                # Center dot (green)
+                cv2.circle(image, (cx, cy), max(3, int(min(a_outer, b_outer) * 0.012)),
+                           (0, 220, 0), -1)
+
+            # ── Draw arrow tips ───────────────────────────────────────────────
+            arrows = detection.get("arrows", [])
+            if not arrows and detection.get("arrow_tip"):
+                arrows = [{
+                    "tip_x": detection["arrow_tip"][0],
+                    "tip_y": detection["arrow_tip"][1],
+                    "confidence": confidence,
+                    "method": method,
+                    "zone": zone,
+                    "points": zone,
+                }]
+
+            for idx, arr in enumerate(arrows):
+                tx, ty = int(arr["tip_x"]), int(arr["tip_y"])
+                conf = arr.get("confidence", 0.0)
+                arr_zone = arr.get("zone") or arr.get("points")
+
+                # Color code by confidence
+                if conf >= 0.85:
+                    color = (0, 230, 0)    # Green
+                elif conf >= 0.60:
+                    color = (0, 215, 255)  # Yellow
+                else:
+                    color = (0, 0, 255)    # Red
+
+                # Crosshair
+                rad = max(5, int(w * 0.009))
+                ll  = max(10, int(w * 0.017))
+                cv2.circle(image, (tx, ty), rad, color, 2)
+                cv2.line(image, (tx - ll, ty), (tx + ll, ty), color, 2)
+                cv2.line(image, (tx, ty - ll), (tx, ty + ll), color, 2)
+
+                # Arrow label: number + zone score
+                label = f"{idx + 1}"
+                if arr_zone is not None:
+                    label += f"({arr_zone})"
+                cv2.putText(image, label, (tx + 8, ty - 8),
+                            font, font_scale * 0.72, color, text_thick)
+
+                # Line from center to tip
+                if target_center:
+                    cv2.line(image,
+                             (int(target_center[0]), int(target_center[1])),
+                             (tx, ty), (0, 165, 255), 1)
+
+            # ── Warning banner (low confidence) ──────────────────────────────
+            low_conf_arrows = [a for a in arrows if a.get("confidence", 1.0) < 0.60]
+            if low_conf_arrows or confidence < 0.60:
+                banner_h = max(28, int(h * 0.04))
+                cv2.rectangle(image, (0, h - banner_h), (w, h), (0, 100, 220), -1)
+                cv2.putText(image, "\u26a0 Review Recommended",
+                            (10, h - banner_h + max(20, banner_h - 6)),
+                            font, font_scale * 0.85, (255, 255, 255), text_thick)
+
+            # ── Score / method overlay ────────────────────────────────────────
+            total_pts  = sum(a.get("points", 0) or 0 for a in arrows) if arrows else (zone or 0)
+            avg_conf   = (sum(a.get("confidence", 0.0) for a in arrows) / len(arrows)) if arrows else confidence
+            label_txt  = f"Total: {total_pts} pts ({len(arrows)} arrows)"
+            conf_txt   = f"Avg Conf: {int(avg_conf * 100)}% ({method})"
+
+            rect_w = max(300, int(len(conf_txt) * font_scale * 14))
+            rect_h = int(85 * font_scale)
+            cv2.rectangle(image, (8, 8), (8 + rect_w, 8 + rect_h), (0, 0, 0), -1)
+            cv2.putText(image, label_txt,
+                        (16, int(8 + 38 * font_scale)),
+                        font, font_scale, (255, 255, 255), text_thick)
+            cv2.putText(image, conf_txt,
+                        (16, int(8 + 70 * font_scale)),
+                        font, font_scale * 0.80, (180, 180, 180), max(1, text_thick - 1))
+
+            _, compressed = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            return compressed.tobytes()
+        except Exception as e:
+            logger.warning("failed_to_generate_annotated_image", error=str(e))
+            return None
+
+    def save_annotated_image(
+        self, image_data: bytes, session_id: int, image_id: str, detection: Dict[str, Any]
+    ) -> bool:
+        """
+        Generate and save the annotated image.
+        """
+        annotated_bytes = self.generate_annotated_image(image_data, detection)
+        if not annotated_bytes:
+            return False
+            
+        annotated_dir = os.path.join(self.storage_path, "annotated", str(session_id))
+        os.makedirs(annotated_dir, exist_ok=True)
+        image_path = os.path.join(annotated_dir, f"{image_id}.jpg")
+        
+        try:
+            with open(image_path, "wb") as f:
+                f.write(annotated_bytes)
+            logger.info("annotated_image_saved", image_id=image_id, session_id=session_id)
+            return True
+        except Exception as e:
+            logger.error("failed_to_save_annotated_image", error=str(e))
+            return False
+

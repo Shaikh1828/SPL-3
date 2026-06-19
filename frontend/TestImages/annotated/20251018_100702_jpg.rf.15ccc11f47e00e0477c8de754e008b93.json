@@ -1,0 +1,30 @@
+{
+  "zone": 10,
+  "points": 10,
+  "confidence": 0.7005,
+  "method": "geometric_zone_ellipses_blue+sift",
+  "distance_ratio": 0.0756,
+  "target_center": [
+    141.4507293701172,
+    217.913330078125
+  ],
+  "target_radius": 494.5173396004571,
+  "a_outer": 559.7274038526747,
+  "b_outer": 429.3072753482395,
+  "angle": 89.388916015625,
+  "arrow_tip": [
+    173.89097595214844,
+    219.11151123046875
+  ],
+  "arrows": [
+    {
+      "tip_x": 173.89097595214844,
+      "tip_y": 219.11151123046875,
+      "confidence": 0.5111,
+      "method": "sift",
+      "shaft_angle": null,
+      "zone": 10,
+      "points": 10
+    }
+  ]
+}

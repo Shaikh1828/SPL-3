@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
-import { FolderOpen, Play, Activity, CheckCircle, AlertCircle, TrendingUp, Cpu, Award, Upload } from 'lucide-react'
+import { FolderOpen, Play, Activity, CheckCircle, AlertCircle, TrendingUp, Cpu, Award, Upload, Eye } from 'lucide-react'
 import { scoresApi } from '@/api/scores'
 import { sessionsApi } from '@/api/sessions'
 import { useSessionStore } from '@/store/sessionStore'
-import type { SessionArcher } from '@/types'
+import type { SessionArcher, Score } from '@/types'
 import toast from 'react-hot-toast'
 import { cn, getConfidenceColor } from '@/lib/utils'
+import { ScoreDetailsModal } from '@/components/scores/ScoreDetailsModal'
 
 interface BatchResult {
   filename: string
@@ -18,6 +19,7 @@ interface BatchResult {
   score_id: number | null
   status: 'success' | 'error'
   error?: string
+  annotated_image?: string | null
 }
 
 export default function BatchTestingPage() {
@@ -35,6 +37,53 @@ export default function BatchTestingPage() {
   
   const [isLoading, setIsLoading] = useState(false)
   const [results, setResults] = useState<BatchResult[]>([])
+
+  // Modal states
+  const [selectedScore, setSelectedScore] = useState<Score | null>(null)
+  const [dryRunScoreData, setDryRunScoreData] = useState<any | null>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+
+  const handleViewResult = async (result: BatchResult) => {
+    if (result.score_id) {
+      try {
+        toast.loading('Fetching score record...', { id: 'fetch-score' })
+        const score = await scoresApi.get(result.score_id)
+        setSelectedScore(score)
+        setDryRunScoreData(null)
+        setIsModalOpen(true)
+        toast.dismiss('fetch-score')
+      } catch {
+        toast.error('Failed to load score record', { id: 'fetch-score' })
+      }
+    } else {
+      setSelectedScore(null)
+      setDryRunScoreData({
+        filename: result.filename,
+        zone: result.zone,
+        points: result.points,
+        confidence: result.confidence,
+        method: result.method,
+        annotated_image: result.annotated_image || null,
+      })
+      setIsModalOpen(true)
+    }
+  }
+
+  const handleOverrideSuccess = async () => {
+    // If a score was overridden, reload its data to update the results list
+    if (selectedScore) {
+      try {
+        const updated = await scoresApi.get(selectedScore.id)
+        setResults(prev =>
+          prev.map(r =>
+            r.score_id === updated.id
+              ? { ...r, zone: updated.zone, points: updated.points, confidence: updated.confidence ?? 0 }
+              : r
+          )
+        )
+      } catch {}
+    }
+  }
 
   useEffect(() => {
     const loadArchers = async () => {
@@ -160,7 +209,8 @@ export default function BatchTestingPage() {
             method: score.method || 'unknown',
             image_id: score.image_id || null,
             score_id: score.id || null,
-            status: 'success'
+            status: 'success',
+            annotated_image: score.annotated_image || null
           })
         } catch (err: any) {
           tempResults.push({
@@ -503,6 +553,7 @@ export default function BatchTestingPage() {
                   <th className="px-6 py-3">AI Confidence</th>
                   <th className="px-6 py-3">Detection Method</th>
                   <th className="px-6 py-3">DB Score ID</th>
+                  <th className="px-6 py-3">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-navy-750 text-sm text-slate-300">
@@ -548,6 +599,17 @@ export default function BatchTestingPage() {
                     <td className="px-6 py-3.5 text-xs font-mono text-slate-500">
                       {result.score_id ? `#${result.score_id}` : '—'}
                     </td>
+                    <td className="px-6 py-3.5">
+                      {result.status === 'success' && (
+                        <button
+                          onClick={() => handleViewResult(result)}
+                          className="text-gold-400 hover:text-gold-300 font-semibold text-xs flex items-center gap-1 bg-gold-500/10 hover:bg-gold-500/20 px-2 py-1 rounded transition-colors"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          View
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -555,6 +617,19 @@ export default function BatchTestingPage() {
           </div>
         </div>
       )}
+      
+      {/* Score details and override modal */}
+      <ScoreDetailsModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false)
+          setSelectedScore(null)
+          setDryRunScoreData(null)
+        }}
+        score={selectedScore}
+        dryRunData={dryRunScoreData}
+        onOverrideSuccess={handleOverrideSuccess}
+      />
     </div>
   )
 }

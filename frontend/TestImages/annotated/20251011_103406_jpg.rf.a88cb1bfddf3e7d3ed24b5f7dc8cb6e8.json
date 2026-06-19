@@ -1,0 +1,93 @@
+{
+  "zone": 8,
+  "points": 8,
+  "confidence": 0.8401,
+  "method": "geometric_dark_ring_boundary+puncture_hole",
+  "distance_ratio": 0.2323,
+  "target_center": [
+    571.9715576171875,
+    489.4992370605469
+  ],
+  "target_radius": 637.7395324707031,
+  "a_outer": 792.3155517578125,
+  "b_outer": 483.16351318359375,
+  "angle": 78.74884796142578,
+  "arrow_tip": [
+    577.5354523227384,
+    312.99755501222495
+  ],
+  "arrows": [
+    {
+      "tip_x": 577.5354523227384,
+      "tip_y": 312.99755501222495,
+      "confidence": 0.85,
+      "method": "puncture_hole",
+      "shaft_angle": 106.52579498291016,
+      "zone": 8,
+      "points": 8
+    },
+    {
+      "tip_x": 859.1990950226244,
+      "tip_y": 535.6742081447964,
+      "confidence": 0.85,
+      "method": "puncture_hole",
+      "shaft_angle": 176.6335391998291,
+      "zone": 4,
+      "points": 4
+    },
+    {
+      "tip_x": 218.791015625,
+      "tip_y": 792.859375,
+      "confidence": 0.85,
+      "method": "puncture_hole",
+      "shaft_angle": 173.92754364013672,
+      "zone": 1,
+      "points": 1
+    },
+    {
+      "tip_x": 540.0,
+      "tip_y": 827.6157894736842,
+      "confidence": 0.85,
+      "method": "puncture_hole",
+      "shaft_angle": 90.0,
+      "zone": 6,
+      "points": 6
+    },
+    {
+      "tip_x": 874.289794921875,
+      "tip_y": 75.2270736694336,
+      "confidence": 0.5109,
+      "method": "sift",
+      "shaft_angle": null,
+      "zone": 1,
+      "points": 1
+    },
+    {
+      "tip_x": 432.3052673339844,
+      "tip_y": 372.33538818359375,
+      "confidence": 0.4509,
+      "method": "sift",
+      "shaft_angle": null,
+      "zone": 7,
+      "points": 7
+    },
+    {
+      "tip_x": 746.6305541992188,
+      "tip_y": 630.4512329101562,
+      "confidence": 0.4508,
+      "method": "sift",
+      "shaft_angle": null,
+      "zone": 7,
+      "points": 7
+    },
+    {
+      "tip_x": 856.060302734375,
+      "tip_y": 864.4540405273438,
+      "confidence": 0.4508,
+      "method": "sift",
+      "shaft_angle": null,
+      "zone": 3,
+      "points": 3
+    }
+  ]
+}

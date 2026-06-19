@@ -164,6 +164,7 @@ class ScoreResponse(BaseModel):
     validated_by_ai: bool
     created_at: Optional[datetime]
     method: Optional[str] = None
+    annotated_image: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -174,6 +175,15 @@ class ScoreValidateRequest(BaseModel):
 
     validated: Optional[bool] = None
     validated_by_ai: Optional[bool] = None
+
+
+class ScoreOverrideRequest(BaseModel):
+    """Score override request by admin."""
+
+    zone: int = Field(..., ge=0, le=10)
+    points: int = Field(..., ge=0, le=10)
+    reason: Optional[str] = Field(None, max_length=500)
+
 
 
 class LeaderboardItem(BaseModel):

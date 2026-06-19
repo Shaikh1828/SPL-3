@@ -16,7 +16,7 @@ import asyncio
 import re
 import math
 
-from src.events import event_bus, EventType
+from src.events import event_bus, EventType, Event
 from src.models.tournament import Session
 from src.models.camera import Camera
 from src.database import SessionLocal
@@ -224,7 +224,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: int):
         active_connections[session_id].add(websocket)
 
         # Define callback for event streaming
-        async def on_event(event_data: dict):
+        async def on_event(event: Event):
             """
             Event handler: Broadcast event to all connected WebSocket clients.
 
@@ -232,9 +232,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: int):
             """
             try:
                 message = json.dumps({
-                    "event_type": event_data.get("event_type"),
-                    "data": event_data.get("data", {}),
-                    "timestamp": event_data.get("timestamp", datetime.utcnow().isoformat()),
+                    "event_type": event.event_type,
+                    "data": event.data,
+                    "timestamp": event.timestamp or datetime.utcnow().isoformat(),
                 })
 
                 # Broadcast to all clients (except disconnected ones with expired grace period)
