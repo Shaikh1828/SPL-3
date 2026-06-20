@@ -175,3 +175,13 @@ See `inception/requirements/extension-notes.md` for detailed compliance plan.
 - ✅ 1 WebSocket endpoint
 
 ---
+
+## Post-Construction Enhancement (2026-06-20)
+
+### Phase: Target/Ring Detection & Arrow Count Accuracy Fix
+
+**Status**: ✅ COMPLETE — see `aidlc-docs/audit.md` "Post-Construction Enhancement — Target/Ring Detection & Arrow Count Accuracy (2026-06-20)" for full root-cause analysis.
+
+**Summary**: `_target_by_dark_ring_boundary` (the highest-priority target method) was bleeding into the wooden target stand and mis-scaling the outer radius by ~30%, corrupting zone scoring for most detections. Re-prioritized `zone_ellipses` (ratio-correct) as primary, hardened it against arrow-occlusion-fragmented rings, demoted/fixed `dark_ring_boundary`, and tightened the noisy SIFT arrow method. Verified via a new diagnostic harness (`tests/scratch_diagnose_current.py`) against all 20 real photos in `tests/TestImages` plus the full `pytest` suite (57/57 passing). Known remaining limits: tightly clustered/touching arrow groups and severely off-axis camera angles.
+
+---

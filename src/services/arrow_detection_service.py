@@ -398,34 +398,43 @@ class ArrowDetectionService:
         Try all target-detection methods, return highest-confidence result.
 
         Priority order:
-          1. zone_ellipses — multi-zone ellipse consensus (most accurate)
-          2. color_bands   — yellow + red + blue independently
-          3. hough         — HoughCircles fallback
-          4. concentric    — concentric contour fallback
+          1. zone_ellipses (2+ bands) — multi-zone ellipse consensus, ratio-correct
+             radius extrapolation. Most accurate: each color band's outer radius
+             is divided by its own true WA ratio, so the inferred outer_radius is
+             geometrically correct even when arrows fragment a ring.
+          2. zone_ellipses (1 band) / color_bands — single-band ratio extrapolation,
+             still ratio-correct but less cross-validated.
+          3. dark_ring_boundary — outside-in saturation blob. NOTE: this measures
+             the boundary of the colored+black region (~77% of the true outer
+             radius, not 100%), and is prone to bleeding into the wooden stand
+             below the target via morphological closing. It is only trustworthy
+             as a *center* cross-check, never as the radius source, so it is
+             demoted to a last-resort fallback.
+          4. hough / concentric — geometric fallbacks when no color signal exists.
         """
         candidates: List[TargetInfo] = []
 
-        # PRIMARY: Dark ring boundary — detect outer colored face (most robust)
-        t = self._target_by_dark_ring_boundary(pp)
-        if t:
-            candidates.append(t)
-
-        # SECONDARY: Multi-zone ellipse consensus (inside-out, color-based)
+        # PRIMARY: Multi-zone ellipse consensus (inside-out, color-based, ratio-correct)
         t = self._target_by_zone_ellipses(image, pp)
         if t:
             candidates.append(t)
 
-        # TERTIARY: Individual color band detection
+        # SECONDARY: Individual color band detection (yellow bullseye)
         t = self._target_by_color_bands(image, pp)
         if t:
             candidates.append(t)
 
-        # QUATERNARY: Hough circles
+        # FALLBACK: Dark ring boundary (radius unreliable — see docstring above)
+        t = self._target_by_dark_ring_boundary(pp)
+        if t:
+            candidates.append(t)
+
+        # FALLBACK: Hough circles
         t = self._target_by_hough(pp)
         if t:
             candidates.append(t)
 
-        # QUINARY: Concentric contours
+        # FALLBACK: Concentric contours
         t = self._target_by_concentric_contours(pp)
         if t:
             candidates.append(t)
@@ -433,42 +442,54 @@ class ArrowDetectionService:
         if not candidates:
             return None
 
-        # Strategy: prefer dark_ring_boundary (outside-in = most reliable).
-        # If it agrees with zone_ellipses, blend for extra precision.
-        dark_results = [c for c in candidates if "dark_ring" in c.method]
         zone_results = [c for c in candidates if "zone_ellipses" in c.method]
+        dark_results = [c for c in candidates if "dark_ring" in c.method]
+        color_results = [c for c in candidates if c.method == "color_yellow"]
 
-        if dark_results:
+        # Prefer multi-band zone_ellipses consensus (ratio-correct radius).
+        ratio_correct = [c for c in (zone_results + color_results)]
+        multi_band = [c for c in zone_results if c.detected_rings >= 2]
+
+        if multi_band:
+            primary = max(multi_band, key=lambda x: x.confidence)
+        elif ratio_correct:
+            primary = max(ratio_correct, key=lambda x: x.confidence)
+        elif dark_results:
+            # Last resort: dark_ring_boundary alone. Its radius measures the
+            # colored+black region (~77% of true outer radius), so rescale.
             primary = max(dark_results, key=lambda x: x.confidence)
-            # If zone_ellipses also succeeded and centers agree, blend 50/50
-            if zone_results:
-                zr = max(zone_results, key=lambda x: x.confidence)
-                dist = math.hypot(primary.center_x - zr.center_x,
-                                  primary.center_y - zr.center_y)
-                agree_thresh = primary.outer_radius * 0.10
-                if dist < agree_thresh:
-                    # Centers agree: blend (dark=60%, zone=40%)
-                    blend_cx = primary.center_x * 0.60 + zr.center_x * 0.40
-                    blend_cy = primary.center_y * 0.60 + zr.center_y * 0.40
-                    # Use dark_ring radius (more reliable: detected from full boundary)
-                    # but take aspect from zone_ellipses (color-detected)
-                    primary = TargetInfo(
-                        center_x=blend_cx, center_y=blend_cy,
-                        outer_radius=primary.outer_radius,
-                        confidence=min(primary.confidence * 1.08, 0.97),
-                        detected_rings=primary.detected_rings + zr.detected_rings,
-                        method=primary.method + "+zone_blend",
-                        a_outer=primary.a_outer if primary.a_outer > 0 else zr.a_outer,
-                        b_outer=primary.b_outer if primary.b_outer > 0 else zr.b_outer,
-                        angle=primary.angle,
-                    )
-            return primary
+            correction = 1.0 / 0.77
+            primary = TargetInfo(
+                center_x=primary.center_x, center_y=primary.center_y,
+                outer_radius=primary.outer_radius * correction,
+                confidence=primary.confidence * 0.7,
+                detected_rings=primary.detected_rings,
+                method=primary.method + "+radius_corrected",
+                a_outer=primary.a_outer * correction,
+                b_outer=primary.b_outer * correction,
+                angle=primary.angle,
+            )
+        else:
+            return max(candidates, key=lambda x: x.confidence)
 
-        if zone_results:
-            primary = max(zone_results, key=lambda x: x.confidence)
-            return primary
+        # Cross-check: if dark_ring_boundary independently agrees with our
+        # ratio-correct center, that's strong corroboration — boost confidence
+        # slightly but NEVER adopt its radius.
+        if dark_results:
+            dr = max(dark_results, key=lambda x: x.confidence)
+            dist = math.hypot(primary.center_x - dr.center_x, primary.center_y - dr.center_y)
+            if dist < primary.outer_radius * 0.12:
+                primary = TargetInfo(
+                    center_x=primary.center_x, center_y=primary.center_y,
+                    outer_radius=primary.outer_radius,
+                    confidence=min(primary.confidence * 1.06, 0.97),
+                    detected_rings=primary.detected_rings,
+                    method=primary.method + "+dark_confirmed",
+                    a_outer=primary.a_outer, b_outer=primary.b_outer,
+                    angle=primary.angle,
+                )
 
-        return max(candidates, key=lambda x: x.confidence)
+        return primary
 
     def _target_by_dark_ring_boundary(self, pp: Dict) -> Optional[TargetInfo]:
         """
@@ -504,18 +525,21 @@ class ArrowDetectionService:
             # Target black ring: medium-low value, any saturation
             # But NOT sky or background (which tend to be uniform)
             dark_mask = cv2.inRange(val, np.array([20]), np.array([120]))
-            # Only include dark pixels that are near high-saturation pixels
+            # Only include dark pixels that are near high-saturation pixels.
+            # Kernel kept small (11px, not 25px) so this doesn't bridge across
+            # the gap to the wooden stand mounted directly below the target.
             sat_dilated = cv2.dilate(
                 sat_mask,
-                cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (25, 25))
+                cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
             )
             dark_near_sat = cv2.bitwise_and(dark_mask, sat_dilated)
 
             combined = cv2.bitwise_or(sat_mask, dark_near_sat)
 
-            # Close large gaps (arrows/holes punch through color)
-            k_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (25, 25))
-            k_open  = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+            # Close gaps (arrows/holes punch through color) — small kernel to
+            # avoid bridging into background (stand, shadows) below the target
+            k_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (13, 13))
+            k_open  = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
             closed = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, k_close)
             opened = cv2.morphologyEx(closed, cv2.MORPH_OPEN, k_open)
 
@@ -575,16 +599,32 @@ class ArrowDetectionService:
                 return None
 
             (ecx, ecy), (ew, eh), eang = ellipse
-            a = max(ew, eh) / 2.0
-            b = min(ew, eh) / 2.0
+            # See _fit_and_validate in _target_by_zone_ellipses: picking a=max(ew,eh)
+            # without rotating eang by 90 deg when eh > ew swaps which real-world
+            # axis a/b describe, rotating the drawn ellipse 90 deg from the truth.
+            if ew >= eh:
+                a, b = ew / 2.0, eh / 2.0
+            else:
+                a, b = eh / 2.0, ew / 2.0
+                eang += 90.0
 
             # Validate ellipse size
             if a < w * 0.08 or b < h * 0.08:
                 return None  # Too small
             if a > max(w, h) * 0.95:
                 return None  # Too large (frame-filling background)
-            if a / (b + 1e-9) > 2.5:
-                return None  # Too distorted
+            if a / (b + 1e-9) > 1.8:
+                return None  # Too distorted — likely bled into stand/background
+
+            # Reject if the fitted ellipse's bounding box touches the image
+            # border: the wooden stand the target sits on almost always
+            # touches the bottom edge of the frame, so a target ellipse that
+            # reaches the border is a strong signal of background bleed-through.
+            bx, by, bw_box, bh_box = cv2.boundingRect(best_cnt)
+            margin = 2
+            if (bx <= margin or by <= margin
+                    or bx + bw_box >= w - margin or by + bh_box >= h - margin):
+                return None
 
             # Confidence: circularity + proximity + coverage
             M = cv2.moments(best_cnt)
@@ -644,11 +684,22 @@ class ArrowDetectionService:
                 cv2.inRange(hsv, np.array([85, 90, 60]), np.array([140, 255, 255])),
                 cv2.bitwise_not(cv2.dilate(cv2.bitwise_or(ym, rm), k_d5))
             )
+            # Black ring: low value (dark), any saturation, excluding pixels
+            # already claimed by the other bands. Low-saturation + low-value
+            # also matches shadows/background, so this band gets an explicit
+            # border-touch rejection below (the stand/shadow signature) rather
+            # than relying on color alone.
+            val = hsv[:, :, 2]
+            blk_m = cv2.bitwise_and(
+                cv2.inRange(val, np.array([15]), np.array([110])),
+                cv2.bitwise_not(cv2.dilate(cv2.bitwise_or(ym, cv2.bitwise_or(rm, bm)), k_d5))
+            )
 
             zone_defs = [
-                ("yellow", 0.192, ym,  0.8),
-                ("red",    0.384, rm,  1.5),
-                ("blue",   0.576, bm,  2.5),
+                ("yellow", 0.192, ym,    0.8),
+                ("red",    0.384, rm,    1.5),
+                ("blue",   0.576, bm,    2.5),
+                ("black",  0.768, blk_m, 1.8),
             ]
             fitted = []
 
@@ -667,6 +718,7 @@ class ArrowDetectionService:
                 img_cx, img_cy = w / 2.0, h / 2.0
                 max_zone_area = w * h * 0.30
                 best_blob = None; best_blob_score = -1.0
+                blob_info = []  # (cand, ca, bcx, bcy, c_circ) for every contour passing filters
                 for cand in vcs:
                     ca = cv2.contourArea(cand)
                     if ca > max_zone_area:
@@ -684,28 +736,105 @@ class ArrowDetectionService:
                     if M["m00"] == 0:
                         continue
                     bcx = M["m10"] / M["m00"]; bcy = M["m01"] / M["m00"]
+                    blob_info.append((cand, ca, bcx, bcy, c_circ))
                     # Proximity to image center (0=edge, 1=exact center)
                     prox = 1.0 - math.hypot(bcx - img_cx, bcy - img_cy) / (max(w, h) * 0.7 + 1e-9)
                     prox = max(0.0, prox)
                     # Score: circularity * proximity * log(area)
                     bscore = c_circ * (0.3 + prox * 0.7) * math.log(ca + 1)
                     if bscore > best_blob_score:
-                        best_blob_score = bscore; best_blob = (cand, ch, cha, chp, c_circ)
+                        best_blob_score = bscore; best_blob = (cand, ca, bcx, bcy, c_circ)
                 if best_blob is None:
                     continue
-                lg, hull, ha, hp, circ = best_blob
-                area = cv2.contourArea(lg)
+                lg, area, lg_cx, lg_cy, circ = best_blob
+
+                # Reject if this blob's bounding box touches the image
+                # border. Only applied to the value-based "black" band: the
+                # colored bands (yellow/red/blue) legitimately reach the
+                # image edge in tightly-cropped photos, but a dark blob
+                # touching the border is the clearest signature of the
+                # value-based mask bleeding into the stand/shadow below the
+                # target rather than tracing a genuine ring.
+                if zname == "black":
+                    bx, by, bbw, bbh = cv2.boundingRect(lg)
+                    bmargin = 2
+                    if (bx <= bmargin or by <= bmargin
+                            or bx + bbw >= w - bmargin or by + bbh >= h - bmargin):
+                        continue
+
+                # Solo fit on just the best fragment first — this is the safe
+                # baseline we fall back to if merging makes things worse.
+                solo_hull = cv2.convexHull(lg)
+                if len(solo_hull) < 5:
+                    continue
                 try:
-                    el = cv2.fitEllipse(hull)
+                    solo_el = cv2.fitEllipse(solo_hull)
                 except cv2.error:
                     continue
-                (ecx, ecy), (aw, ah), eang = el
-                az = max(aw, ah) / 2.0; bz = min(aw, ah) / 2.0
-                if az < 8 or bz < 8 or az / bz > 3.0:
+                (solo_cx, solo_cy), (solo_aw, solo_ah), solo_eang = solo_el
+                solo_az = max(solo_aw, solo_ah) / 2.0
+
+                # Arrow clusters often cut a ring into several fragments. Gather
+                # any OTHER fragment whose centroid sits within ~1.5 ring-radii
+                # of the best fragment's centroid (same ring, just split by
+                # shafts) and fit the ellipse to their COMBINED points — this
+                # keeps the fit centered even when the ring is occluded.
+                # Scale the search by the SOLO fragment's own semi-axis (a
+                # genuine ring-size estimate), not by sqrt(area/pi), which
+                # badly underestimates a thin arc fragment's true ring radius.
+                cluster_pts = [lg.reshape(-1, 2)]
+                merge_radius = max(solo_az * 1.5, 30.0)
+                for cand, ca, bcx, bcy, c_circ in blob_info:
+                    if cand is lg:
+                        continue
+                    if math.hypot(bcx - lg_cx, bcy - lg_cy) < merge_radius:
+                        cluster_pts.append(cand.reshape(-1, 2))
+
+                def _fit_and_validate(pts):
+                    hull = cv2.convexHull(pts)
+                    if len(hull) < 5:
+                        return None
+                    try:
+                        el = cv2.fitEllipse(hull)
+                    except cv2.error:
+                        return None
+                    (ecx, ecy), (aw, ah), eang = el
+                    # cv2.fitEllipse pairs aw with the angle's own direction and ah
+                    # with the perpendicular direction. Picking az=max(aw,ah) without
+                    # rotating eang by 90 deg whenever ah > aw silently swaps which
+                    # real-world axis az/bz describe — the ellipse ends up rotated
+                    # 90 deg from the true ring (e.g. tall instead of wide).
+                    if aw >= ah:
+                        az, bz, fit_ang = aw / 2.0, ah / 2.0, eang
+                    else:
+                        az, bz, fit_ang = ah / 2.0, aw / 2.0, eang + 90.0
+                    # Cross-validated multi-band consensus fits in this dataset
+                    # cluster around a 1.2-1.4 axis ratio (genuine target/camera
+                    # geometry); a lone band fit at 2x+ is a fragmented/occluded
+                    # blob (e.g. a ring chopped up by a cluster of arrow holes),
+                    # not a real perspective ellipse.
+                    if az < 8 or bz < 8 or az / bz > 1.45:
+                        return None
+                    af = az / ratio; bf = bz / ratio
+                    if af > max(w, h) * 0.9:
+                        return None
+                    return ecx, ecy, az, bz, af, bf, fit_ang
+
+                result = None
+                if len(cluster_pts) > 1:
+                    combined_pts = np.vstack(cluster_pts)
+                    result = _fit_and_validate(combined_pts)
+                    # Reject merges that blow up the fitted size far beyond the
+                    # solo fragment's own estimate — sign of an unrelated blob
+                    # getting pulled in rather than a true ring fragment.
+                    if result is not None and result[2] > solo_az * 1.8:
+                        result = None
+                if result is None:
+                    result = _fit_and_validate(lg)
+                if result is None:
                     continue
-                af = az / ratio; bf = bz / ratio
-                if af > max(w, h) * 0.9:
-                    continue
+                ecx, ecy, az, bz, af, bf, eang = result
+
                 conf = min(circ * 0.5 + (area / (w * h)) * 3.0 + 0.25, 0.90)
                 fitted.append({"cx": float(ecx), "cy": float(ecy), "af": af, "bf": bf,
                                 "ang": eang % 180, "conf": conf, "name": zname, "wt": fw * conf})
@@ -827,6 +956,14 @@ class ArrowDetectionService:
             b_outer = b / 0.192
             outer_radius = (a_outer + b_outer) / 2
             confidence = min(0.55 + hull_circ * 0.4, 0.95)
+            # Yellow's 19.2% outer ratio means any mask over-segmentation gets
+            # amplified ~5x when extrapolated to the full target. A predicted
+            # radius bigger than the photo itself is only plausible for a
+            # tightly-cropped/zoomed shot, so this can be a legitimate result —
+            # discount confidence rather than reject outright, so a more
+            # reliable multi-band estimate (if one exists) wins instead.
+            if max(a_outer, b_outer) > max(w, h) * 0.9:
+                confidence *= 0.55
 
             return TargetInfo(
                 center_x=float(cx),
@@ -841,65 +978,6 @@ class ArrowDetectionService:
             )
         except Exception as exc:
             logger.debug("color_target_error", error=str(exc))
-        return None
-
-    def _target_by_concentric_contours(self, pp: Dict) -> Optional[TargetInfo]:
-        """
-        Find concentric circular contours (Canny + hierarchy analysis).
-        Multiple circles sharing a common center → target face.
-        """
-        try:
-            edges = cv2.Canny(pp["enhanced"], 40, 120)
-            contours, hierarchy = cv2.findContours(
-                edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
-            )
-            if not contours or hierarchy is None:
-                return None
-
-            circles: List[Tuple[float, float, float]] = []
-            for cnt in contours:
-                if len(cnt) < 5 or cv2.contourArea(cnt) < 50:
-                    continue
-                ellipse = cv2.fitEllipse(cnt)
-                cx, cy = ellipse[0]
-                axes = ellipse[1]
-                r = (axes[0] + axes[1]) / 4
-                if r > 10:
-                    circles.append((cx, cy, r))
-
-            if len(circles) < 2:
-                return None
-
-            best_center = None
-            best_count = 0
-            best_max_r = 0.0
-
-            for i, (cx1, cy1, _) in enumerate(circles):
-                cluster = [
-                    c
-                    for c in circles
-                    if math.hypot(c[0] - cx1, c[1] - cy1)
-                    < max(c[2] for c in circles) * 0.1
-                ]
-                if len(cluster) > best_count:
-                    best_count = len(cluster)
-                    best_center = (cx1, cy1)
-                    best_max_r = max(c[2] for c in cluster)
-
-            if best_center is None or best_count < 2:
-                return None
-
-            confidence = min(0.35 + best_count * 0.12, 0.85)
-            return TargetInfo(
-                center_x=float(best_center[0]),
-                center_y=float(best_center[1]),
-                outer_radius=float(best_max_r),
-                confidence=confidence,
-                detected_rings=best_count,
-                method="concentric_contours",
-            )
-        except Exception as exc:
-            logger.debug("concentric_contour_error", error=str(exc))
         return None
 
     def _target_by_hough(self, pp: Dict) -> Optional[TargetInfo]:
@@ -1250,9 +1328,13 @@ class ArrowDetectionService:
                 if comp_w == 0 or comp_h == 0:
                     continue
 
-                # STRICT elongation: arrow holes must be clearly oblong (aspect >= 2.5)
+                # Elongation: a hole made by a shaft entering at a shallow
+                # trajectory angle is oblong; one entering closer to
+                # perpendicular is closer to round. 2.0 (was 2.5) recovers
+                # genuine near-perpendicular hits without opening the door to
+                # small round noise, since area/radial-alignment still gate it.
                 aspect = max(comp_w, comp_h) / max(min(comp_w, comp_h), 1)
-                if aspect < 2.5:
+                if aspect < 2.0:
                     continue
 
                 # Get hole orientation and verify radial alignment
@@ -1282,8 +1364,11 @@ class ArrowDetectionService:
                 except Exception:
                     pass
 
-                # STRICT radial alignment: hole long axis must point toward center (cos > 0.75)
-                if radial_cos < 0.75:
+                # Radial alignment: hole long axis should point toward center.
+                # Lowered from 0.75 — at aspect closer to 2.0 the minAreaRect
+                # angle estimate is noisier even for genuine holes, so an
+                # over-strict cosine here was rejecting real near-round holes.
+                if radial_cos < 0.65:
                     continue
 
                 # Confidence: large + elongated + aligned = higher confidence
@@ -1446,6 +1531,35 @@ class ArrowDetectionService:
 
     # ─── Arrow Detection Methods ────────────────────────────────────────────
 
+    def _is_local_dark_spot(
+        self, gray: Any, x: float, y: float, size: float, min_contrast: int = 12,
+    ) -> bool:
+        """
+        True if (x, y) is notably darker than the ring of pixels around it —
+        the signature of an actual puncture hole. Used to reject SIFT
+        keypoints that fire on printed numerals/gridlines/old marks instead
+        of fresh arrow holes (those have no consistent dark-center signature).
+        """
+        h, w = gray.shape[:2]
+        r_in = max(2, int(size / 2))
+        r_out = r_in + 6
+        xi, yi = int(round(x)), int(round(y))
+        x0, y0 = max(0, xi - r_out), max(0, yi - r_out)
+        x1, y1 = min(w, xi + r_out + 1), min(h, yi + r_out + 1)
+        if x1 <= x0 or y1 <= y0:
+            return False
+
+        patch = gray[y0:y1, x0:x1]
+        py, px = np.mgrid[y0:y1, x0:x1]
+        dist = np.hypot(px - xi, py - yi)
+
+        inner = patch[dist <= r_in]
+        outer = patch[(dist > r_in) & (dist <= r_out)]
+        if inner.size == 0 or outer.size == 0:
+            return False
+
+        return float(np.mean(outer)) - float(np.mean(inner)) >= min_contrast
+
     def _arrows_by_sift(self, pp: Dict, target: Optional[TargetInfo]) -> List[ArrowInfo]:
         """
         SIFT keypoint detection for arrow holes (spec §5.3 Method 2).
@@ -1478,8 +1592,18 @@ class ArrowDetectionService:
                 nd = self._get_normalized_distance(x, y, target)
                 if nd > 0.97:
                     continue  # outside target
+
+                # SIFT alone fires on printed zone numerals, grid lines, and
+                # old leftover pinholes just as readily as on fresh arrow
+                # holes. Require the keypoint to actually sit on a dark hole
+                # (darker than its surrounding ring) to reject those false
+                # positives — a real puncture is darker than the paper/ink
+                # around it, printed text/gridlines are not reliably so.
+                if not self._is_local_dark_spot(gray, x, y, size):
+                    continue
+
                 # Higher response = more distinctive = higher confidence
-                conf = min(0.45 + kp.response * 0.01, 0.70)
+                conf = min(0.40 + kp.response * 0.01, 0.62)
                 arrows.append(ArrowInfo(
                     tip_x=float(x), tip_y=float(y),
                     confidence=conf, method="sift",

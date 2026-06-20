@@ -1439,3 +1439,85 @@ pytest tests/ -v
 **Status**: ✅ COMPLETE
 
 ---
+
+## Post-Construction Enhancement — Target/Ring Detection & Arrow Count Accuracy (2026-06-20)
+
+**Timestamp**: 2026-06-20T00:00:00+06:00
+**Request**: "Amr system e AIDLC diye develop kora, kintu besh kisu jinish missing ase... target er circle gulo valo moto detect korte partese na, arrow er hitting point thikmoto detect korte partese na, arrow count thikmoto korte partese na... Just make the accuracy highest." (target circle detection, arrow tip detection, and arrow count are all still wrong; fix using AIDLC, consult the Safri et al. paper if useful, maximize accuracy)
+**Triggered by**: User running the production pipeline against `tests/TestImages` and visually inspecting the (still-wrong) output
+
+### Diagnostic Method
+
+Built `tests/scratch_diagnose_current.py`, a harness that loads `ArrowDetectionService` directly (no FastAPI/DB deps) and runs it against all 20 real photos in `tests/TestImages`, writing annotated `tests/TargetDebug/current_*.jpg` outputs (ellipse + zone rings + arrow markers) for visual comparison against the originals. This is what surfaced the bugs below — the prior 2026-06-18 fix addressed the *yellow-band* radius bug, but a *second*, more dominant bug in the higher-priority `dark_ring_boundary` target method was still active in production.
+
+### Root Cause Analysis
+
+**Bug 1 — `_target_by_dark_ring_boundary` given unconditional top priority despite two flaws**
+(a) Its saturation/dark mask was morphologically closed/dilated with large (25px) kernels, which routinely bridged across the gap to the wooden stand the target is mounted on, producing grossly oversized, off-center ellipses (visually confirmed: ellipse extending into grass/stand below the target).
+(b) Even without background bleed, the mask only captures the *colored+black* region (~77% of the true outer radius) but was used directly as the full outer_radius (100%), systematically mis-scaling every zone boundary by ~30%. Since every arrow's score is computed from this ellipse, this one method corrupted most detections it won.
+
+**Bug 2 — Single-largest-fragment ellipse fitting breaks under arrow occlusion**
+`_target_by_zone_ellipses` fit each color band's ellipse to only the single largest contour. When several arrows cluster together (common in practice), they cut a ring into fragments; fitting to one fragment skews the center.
+
+**Bug 3 — SIFT arrow candidates had no shape/alignment check**
+`_arrows_by_sift` accepted any small high-contrast keypoint inside the target — firing on printed zone numerals, grid lines, and old leftover pinholes. Observed 7-8 "arrows" reported on photos with 4-5 real arrows.
+
+### Changes Made
+
+**`src/services/arrow_detection_service.py`**:
+1. `_detect_target`: Reordered priority so `zone_ellipses` (ratio-correct radius extrapolation, 2+ band consensus) is primary; `_target_by_dark_ring_boundary` demoted to a last-resort fallback whose radius is rescaled (`/0.77`) and confidence penalized, and only otherwise used to corroborate (never override) the chosen center.
+2. `_target_by_dark_ring_boundary`: Shrank dilation/close kernels (25px → 11-13px) to stop bridging into the stand; tightened aspect-ratio rejection (2.5 → 1.8); added rejection when the fitted ellipse's bounding box touches the image border (the stand's clearest signature).
+3. `_target_by_zone_ellipses`: When a color band's best contour has nearby same-color fragments (arrow-occluded ring), fits the ellipse to their combined points instead of the single largest fragment, with a safe fallback to the solo fit if the merge inflates the size implausibly.
+4. `_arrows_by_sift`: Added `_is_local_dark_spot` helper — requires a keypoint to sit on a hole that is genuinely darker than its surroundings before accepting it as an arrow candidate, rejecting numerals/gridlines/bright artifacts that have no such signature.
+5. Removed a dead, shadowed duplicate definition of `_target_by_concentric_contours`.
+
+### Verification Results
+
+Re-ran `tests/scratch_diagnose_current.py` against all 20 real `tests/TestImages` photos after each change and visually compared `tests/TargetDebug/current_*.jpg` to the originals: the target ellipse and zone rings now track the visible target boundary and center tightly (previously bled into the stand or extended off-frame). Arrow tip/count accuracy improved substantially but is not perfect — very tightly clustered arrows (touching/near-touching groups) can still be merged into one detection by NMS, and severe off-axis camera angles remain harder than near-head-on shots.
+
+```
+pytest tests/ -v
+====================== 57 passed in 143.29s ======================
+```
+
+- All 57 existing tests (including `TestArrowDetectionService`): ✅ Still passing
+
+### Note on the referenced paper (Safri et al., JAIC 2025)
+
+Did not port in their YOLOv8 + Euclidean-distance approach. Their own results (67% accuracy) and their own comparison table (classical color/shape CV methods at 96-100%) both indicate the classical multi-method pipeline already implemented in this codebase is the better-performing approach; the fix here hardens that existing approach rather than replacing it.
+
+**Status**: ✅ COMPLETE — core ring/circle detection bug fixed and verified; tight-cluster arrow disambiguation and severe perspective skew remain known follow-up areas if needed.
+
+---
+
+## Post-Construction Enhancement — Follow-up: Zone Cross-Validation & Arrow Tip Recall (2026-06-20)
+
+**Timestamp**: 2026-06-20T01:30:00+06:00
+**Request**: User re-tested via the frontend (BatchTestingPage/Scoring page) after the previous fix and reported the zone-color regions (yellow=9/10, red=7/8, blue=5/6, black=3/4, white=1/2) still weren't being defined well, and arrow tip ("last point") accuracy was still insufficient; asked whether image preprocessing was properly implemented.
+
+### Findings
+
+1. `TARGET_COLOR_BANDS` declares 5 zone colors but `_target_by_zone_ellipses` only ever fit 3 (yellow/red/blue) — black and white were never cross-validated, weakening center/radius consensus exactly where the user expected all 5 zones to be used.
+2. The spec's preprocessing step 4 (auto-detect target corners + perspective/homography correction) is not implemented. Evaluated adding it and decided against it for this pass: every downstream structure (`TargetInfo.a_outer/b_outer/angle`, normalized-distance math, annotated-image ring drawing) assumes the target boundary is representable as a single ellipse; a homography-corrected boundary mapped back to the original image is a general projective conic, not an ellipse, so supporting it properly would mean reworking that representation throughout the pipeline. The existing ellipse fit already handles the mild perspective skew present in nearly all of the 20 sample photos; only one extreme outlier (very steep camera angle) is poorly served. Flagged as a separate, larger follow-up rather than bundled into this fix.
+3. Puncture-hole arrow detection (the most direct, geometry-free tip method) required aspect ratio ≥2.5 and radial-alignment cosine ≥0.75 — calibrated for holes from shallow-angle impacts, but rejecting genuine near-perpendicular (rounder) holes.
+
+### Changes Made
+
+**`src/services/arrow_detection_service.py`**:
+1. `_target_by_zone_ellipses`: Added a 4th "black" band (ratio 0.768, value-channel based) to `zone_defs`, giving 2-4 band consensus instead of 3 max. Added a border-touch rejection scoped *only* to the black band (value-based masks are the ones prone to bleeding into the stand; colored bands legitimately reach the image edge in tightly-cropped photos and must not be rejected for it — first version of this change applied the check to all bands and regressed several previously-correct blue/red fits, caught and fixed via the diagnostic harness before landing).
+2. `_detect_puncture_holes`: Relaxed aspect-ratio floor 2.5 → 2.0 and radial-alignment cosine floor 0.75 → 0.65 to recover genuine near-perpendicular holes without loosening the area/inside-target gates.
+
+### Verification Results
+
+Re-ran `tests/scratch_diagnose_current.py` against all 20 `tests/TestImages` photos after each change. Net effect: 3 images gained a second cross-validating band (`zone_ellipses_blue+black`), one previously under-counted image (4 real arrows, 2 detected) now correctly reports 4 distinct arrows. No previously-correct image regressed (after fixing the border-check scope bug caught mid-change).
+
+```
+pytest tests/ -q
+================ 57 passed, 513 warnings in 154.11s =================
+```
+
+**Note for the user**: this fix is in `src/services/arrow_detection_service.py` only — if testing through the running frontend/backend, the backend process must be restarted (or `--reload` must have picked up the change) to see the new behavior; a stale running process will keep showing pre-fix results.
+
+**Status**: ✅ COMPLETE — incremental improvement verified; perspective/homography correction for severe camera angles remains an open, larger follow-up if the user's real camera setups need it.
+
+---

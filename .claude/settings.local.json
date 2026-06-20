@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import cv2, numpy; print\\(cv2.__version__, numpy.__version__\\)\")",
+      "Bash(pip --version)",
+      "Bash(python -m venv --help)"
+    ]
+  }
+}
