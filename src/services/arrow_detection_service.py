@@ -315,6 +315,82 @@ class ArrowDetectionService:
 
     # ─── Stage 1: Preprocessing ────────────────────────────────────────────
 
+    def _normalize_lighting(self, image: Any) -> Tuple[Any, str]:
+        """
+        Histogram-analysis-driven illumination & colour normalization.
+
+        Reads the grey-level histogram once and applies, *conditionally*, the
+        classic correction techniques so the colour bands the rest of the
+        pipeline keys on stay stable across outdoor lighting:
+
+          1. Under-exposure  → brightening gamma (<1)            [dark frames]
+          2. Over-exposure   → darkening gamma (>1)              [bright frames]
+          3. Low dynamic range → percentile contrast stretch     [flat/hazy]
+          4. Uneven illumination → CLAHE on the LAB L channel     [shadow/glare]
+          5. Colour cast → gray-world white balance               [tinted light]
+
+        A well-exposed, neutral frame trips none of these and is returned as-is,
+        so this never degrades the easy cases. Returns (image, label).
+        """
+        try:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            hist = cv2.calcHist([gray], [0], None, [256], [0, 256]).ravel()
+            total = float(gray.size)
+            cdf = np.cumsum(hist) / total
+            p1 = int(np.searchsorted(cdf, 0.01))
+            p50 = int(np.searchsorted(cdf, 0.50))
+            p99 = int(np.searchsorted(cdf, 0.99))
+            dark_frac = float(hist[:40].sum() / total)
+            bright_frac = float(hist[220:].sum() / total)
+            dyn_range = p99 - p1
+
+            label = "NORMAL"
+
+            # (1)/(2) Exposure correction via gamma, sized to the median level.
+            if p50 < 70 or dark_frac > 0.45:
+                label = "DARK"
+                g = 0.55 if p50 < 50 else 0.7
+                lut = np.array([((i / 255.0) ** g) * 255 for i in range(256)],
+                               dtype=np.uint8)
+                image = cv2.LUT(image, lut)
+            elif p50 > 190 or bright_frac > 0.25:
+                label = "BRIGHT"
+                lut = np.array([((i / 255.0) ** 1.4) * 255 for i in range(256)],
+                               dtype=np.uint8)
+                image = cv2.LUT(image, lut)
+
+            # (3) Contrast stretch when the tones are bunched into a narrow band.
+            if dyn_range < 90 and p99 > p1:
+                lo, hi = float(p1), float(p99)
+                stretched = (image.astype(np.float32) - lo) * (255.0 / (hi - lo))
+                image = np.clip(stretched, 0, 255).astype(np.uint8)
+                label = "LOW_CONTRAST" if label == "NORMAL" else label
+
+            # (4) Even out non-uniform illumination (one side shadowed/glared)
+            # by equalizing only the LAB lightness channel — leaves hue/chroma,
+            # hence the ring colours, intact.
+            tile_std = float(np.std(cv2.resize(gray, (8, 8), interpolation=cv2.INTER_AREA)))
+            if tile_std > 55 or label in ("DARK", "BRIGHT"):
+                lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+                l, a, b = cv2.split(lab)
+                l = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(l)
+                image = cv2.cvtColor(cv2.merge((l, a, b)), cv2.COLOR_LAB2BGR)
+
+            # (5) Gray-world white balance, only on a clear colour cast so neutral
+            # frames are untouched.
+            means = image.reshape(-1, 3).mean(axis=0) + 1e-6
+            gray_mean = float(means.mean())
+            if max(means) / min(means) > 1.18:
+                scale_b = gray_mean / means
+                wb = image.astype(np.float32) * scale_b.reshape(1, 1, 3)
+                image = np.clip(wb, 0, 255).astype(np.uint8)
+                label = label if label != "NORMAL" else "COLOR_CAST"
+
+            return image, label
+        except Exception as exc:
+            logger.debug("lighting_normalize_error", error=str(exc))
+            return image, "NORMAL"
+
     def _preprocess(self, image: Any) -> Dict[str, Any]:
         """
         Resize, denoise (bilateral), enhance contrast (CLAHE).
@@ -326,32 +402,16 @@ class ArrowDetectionService:
             image = cv2.resize(image, (int(w * scale), int(h * scale)),
                                interpolation=cv2.INTER_AREA)
 
+        # Histogram-driven lighting normalization. Each correction is applied
+        # ONLY when the grey-level histogram says it is needed, so a well-exposed
+        # frame passes through untouched while a hard one is rescued. See
+        # _normalize_lighting for the individual techniques.
+        image, lighting = self._normalize_lighting(image)
+
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
         sat = hsv[:, :, 1]
-
-        # Lighting assessment
-        mean_bright = float(np.mean(gray))
-        if mean_bright < 80:
-            lighting = "DARK"
-            # Gamma correction for dark images
-            gamma_table = np.array([((i/255.0)**0.5)*255 for i in range(256)]).astype(np.uint8)
-            image = cv2.LUT(image, gamma_table)
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-            hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-            lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-            sat = hsv[:, :, 1]
-        elif mean_bright > 200:
-            lighting = "BRIGHT"
-            gamma_table = np.array([((i/255.0)**1.4)*255 for i in range(256)]).astype(np.uint8)
-            image = cv2.LUT(image, gamma_table)
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-            hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-            lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-            sat = hsv[:, :, 1]
-        else:
-            lighting = "NORMAL"
 
 
         # Bilateral filter — edge-preserving noise reduction (better than Gaussian for shafts)
@@ -489,7 +549,239 @@ class ArrowDetectionService:
                     angle=primary.angle,
                 )
 
+        # REFINEMENT (only for unreliable seeds): a multi-band zone_ellipses
+        # consensus is already ratio-correct and well-centred, so leave it
+        # alone. But a single-band fit — above all color_yellow, whose 1/0.192
+        # extrapolation amplifies any error ~5x and routinely lands the whole
+        # target in the grass — is exactly where tracing the *actual* colour-ring
+        # boundaries radially pays off. Every WA ring is a concentric similar
+        # ellipse, so each detected boundary point scaled toward centre by
+        # 1/ratio lands on the same outer ellipse; fitting that combined cloud
+        # gives a center+axes+angle grounded in real pixels. Adopt it only when
+        # it cross-validated 2+ independent ring boundaries (handled inside).
+        # SELF-VALIDATING REFINEMENT. Rather than guess from the method name
+        # whether a fit is trustworthy, measure it: sample each ring band's
+        # mid-radius and check the pixel colour actually matches what WA says it
+        # should be. If the chosen fit already matches the image very well, keep
+        # it. Otherwise trace the real ring boundaries radially and adopt that
+        # result only if it scores strictly better. This is what fixes the
+        # "yellow ring drawn over the red" / "rings spilling into the grass"
+        # failures without risking the fits that were already good.
+        seed_agree = self._ring_color_agreement(pp, primary)
+        if seed_agree < 0.80:
+            refined = self._refine_target_radial(pp, primary)
+            if (refined is not None
+                    and self._ring_color_agreement(pp, refined) > seed_agree):
+                return refined
+
         return primary
+
+    def _ring_color_agreement(self, pp: Dict, t: "TargetInfo") -> float:
+        """
+        Fraction of sampled ring-band mid-radius points whose pixel colour
+        matches the WA-expected colour for that band. A correct target+scale
+        scores high; one drawn too big/small or mis-centred scores low because
+        each band lands on the wrong colour. Used to pick between candidate fits.
+        """
+        try:
+            hsv = pp["hsv"]
+            H, W = hsv.shape[:2]
+            a = t.a_outer if t.a_outer > 0 else t.outer_radius
+            b = t.b_outer if t.b_outer > 0 else t.outer_radius
+            if a <= 0 or b <= 0:
+                return 0.0
+            rad = math.radians(t.angle)
+            ca, sa = math.cos(rad), math.sin(rad)
+            bands = [(0.144, "yellow"), (0.288, "red"), (0.480, "blue"),
+                     (0.672, "black"), (0.864, "white")]
+            ok = 0; tot = 0
+            for ratio, expected in bands:
+                for deg in range(0, 360, 12):
+                    th = math.radians(deg)
+                    ex = a * ratio * math.cos(th)
+                    ey = b * ratio * math.sin(th)
+                    px = t.center_x + ex * ca - ey * sa
+                    py = t.center_y + ex * sa + ey * ca
+                    xi, yi = int(round(px)), int(round(py))
+                    if 0 <= xi < W and 0 <= yi < H:
+                        tot += 1
+                        if self._classify_target_color(hsv[yi, xi]) == expected:
+                            ok += 1
+            return (ok / tot) if tot else 0.0
+        except Exception:
+            return 0.0
+
+    def _classify_target_color(self, hsv_px) -> str:
+        """Coarse WA target-face color class for one HSV pixel."""
+        h, s, v = int(hsv_px[0]), int(hsv_px[1]), int(hsv_px[2])
+        if v < 65 and s < 130:
+            return "black"
+        if s < 55 and v > 135:
+            return "white"
+        if (h <= 14 or h >= 165) and s > 80 and v > 60:
+            return "red"
+        if 15 <= h <= 46 and s > 70 and v > 90:
+            return "yellow"
+        if 85 <= h <= 142 and s > 55 and v > 50:
+            return "blue"
+        return "other"
+
+    @staticmethod
+    def _smooth_labels(labels: List[str], win: int) -> List[str]:
+        """Sliding-window majority vote over a ray's colour-label sequence, so a
+        few hole/glare pixels can't masquerade as an early ring boundary."""
+        n = len(labels)
+        if win < 1 or n == 0:
+            return labels
+        out = []
+        for i in range(n):
+            lo = max(0, i - win); hi = min(n, i + win + 1)
+            counts: Dict[str, int] = {}
+            for lab in labels[lo:hi]:
+                counts[lab] = counts.get(lab, 0) + 1
+            out.append(max(counts.items(), key=lambda kv: kv[1])[0])
+        return out
+
+    def _refine_target_radial(self, pp: Dict, seed: "TargetInfo") -> Optional["TargetInfo"]:
+        """
+        Refine/replace a seed target by tracing the real colour-ring boundaries.
+
+        This is *scale-free*: from the seed centre (the only thing it trusts) it
+        casts rays to the frame edge and marches each ray through the WA colour
+        sequence yellow→red→blue→black→white in order, recording the radius of
+        each ordered transition. It does NOT assume the seed's radius/angle, so
+        it recovers close-up shots where the band-area caps made the colour
+        methods fall back to an unreliable yellow-only fit. Each boundary point
+        pushed radially to 1/ratio of its distance lands on the same outer
+        ellipse (WA rings are concentric similar ellipses), so one ellipse is fit
+        to the combined, outlier-trimmed cloud; the centre is re-estimated and
+        the trace repeated. Returns None (caller keeps the seed) unless 2+
+        independent ring boundaries cross-validate the fit.
+        """
+        try:
+            H, W = pp["hsv"].shape[:2]
+            hsv = pp["hsv"]
+            cx = float(seed.center_x); cy = float(seed.center_y)
+            a = float(seed.a_outer if seed.a_outer > 0 else seed.outer_radius)
+            b = float(seed.b_outer if seed.b_outer > 0 else seed.outer_radius)
+            if a < 6 or b < 6:
+                return None
+            ang = float(seed.angle)
+
+            # Outward colour order and the outer-boundary ratio at which each
+            # NEW colour begins (yellow ends / red begins at 0.192, etc.).
+            seq = ["yellow", "red", "blue", "black", "white"]
+            begin_ratio = {"red": 0.192, "blue": 0.384, "black": 0.576, "white": 0.768}
+            step = max(1.5, max(a, b) / 300.0)
+
+            best_pts = None
+            best_nb = 0
+            for _ in range(4):
+                full_pts: List[Tuple[float, float]] = []
+                per_boundary = {k: 0 for k in begin_ratio}
+
+                for deg in range(0, 360, 2):
+                    th = math.radians(deg)
+                    dx, dy = math.cos(th), math.sin(th)
+                    # March out to the frame edge along this ray.
+                    if dx > 1e-6:
+                        sx = (W - 1 - cx) / dx
+                    elif dx < -1e-6:
+                        sx = (0 - cx) / dx
+                    else:
+                        sx = 1e9
+                    if dy > 1e-6:
+                        sy = (H - 1 - cy) / dy
+                    elif dy < -1e-6:
+                        sy = (0 - cy) / dy
+                    else:
+                        sy = 1e9
+                    r_edge = min(sx, sy)
+                    if r_edge < 4 * step:
+                        continue
+
+                    radii: List[float] = []
+                    labels: List[str] = []
+                    s = step
+                    while s < r_edge:
+                        xi = int(cx + dx * s); yi = int(cy + dy * s)
+                        if 0 <= xi < W and 0 <= yi < H:
+                            radii.append(s)
+                            labels.append(self._classify_target_color(hsv[yi, xi]))
+                        s += step
+                    if len(labels) < 8:
+                        continue
+                    win = max(1, len(labels) // 40)
+                    labels = self._smooth_labels(labels, win)
+
+                    # The ray must start inside the yellow centre to be trusted.
+                    head = labels[: max(3, len(labels) // 12)]
+                    if head.count("yellow") < max(1, len(head) // 2):
+                        continue
+
+                    # March the colour sequence in order; record each ordered
+                    # transition's radius (midpoint of last-inner / first-outer).
+                    expect = 0  # index into seq; currently inside seq[expect]
+                    last_inner_r = radii[0]
+                    for s_, lab in zip(radii, labels):
+                        if expect + 1 >= len(seq):
+                            break
+                        inner_c = seq[expect]; outer_c = seq[expect + 1]
+                        if lab == inner_c:
+                            last_inner_r = s_
+                        elif lab == outer_c:
+                            ratio = begin_ratio[outer_c]
+                            bnd_r = (last_inner_r + s_) / 2.0
+                            full_pts.append((cx + dx * (bnd_r / ratio),
+                                             cy + dy * (bnd_r / ratio)))
+                            per_boundary[outer_c] += 1
+                            expect += 1
+                            last_inner_r = s_
+
+                if len(full_pts) < 18:
+                    return None
+
+                pts = np.array(full_pts, dtype=np.float32)
+                d = np.hypot(pts[:, 0] - cx, pts[:, 1] - cy)
+                med = float(np.median(d))
+                keep = pts[np.abs(d - med) < 0.28 * med]
+                if len(keep) < 12:
+                    keep = pts
+                if len(keep) < 5:
+                    return None
+
+                el = cv2.fitEllipse(keep.astype(np.float32))
+                (ecx, ecy), (ew, eh), eang = el
+                if math.hypot(ecx - cx, ecy - cy) > 0.6 * max(a, b):
+                    break  # divergent — keep previous iteration's fit
+                cx, cy = float(ecx), float(ecy)
+                if ew >= eh:
+                    a, b, ang = ew / 2.0, eh / 2.0, eang
+                else:
+                    a, b, ang = eh / 2.0, ew / 2.0, eang + 90.0
+                best_pts = keep
+                best_nb = sum(1 for v in per_boundary.values() if v >= 5)
+
+            if best_pts is None or a < 8 or b < 8 or a / b > 1.8:
+                return None
+            if best_nb < 2:
+                return None
+
+            d = np.hypot(best_pts[:, 0] - cx, best_pts[:, 1] - cy)
+            spread = float(np.std(d) / (np.mean(d) + 1e-9))
+            conf = min(0.72 + best_nb * 0.06 + max(0.0, 0.12 - spread * 0.5), 0.97)
+
+            return TargetInfo(
+                center_x=cx, center_y=cy,
+                outer_radius=float((a + b) / 2.0),
+                confidence=float(conf),
+                detected_rings=max(seed.detected_rings, best_nb),
+                method="radial_rings",
+                a_outer=float(a), b_outer=float(b), angle=float(ang % 180),
+            )
+        except Exception as exc:
+            logger.debug("radial_refine_error", error=str(exc))
+        return None
 
     def _target_by_dark_ring_boundary(self, pp: Dict) -> Optional[TargetInfo]:
         """
@@ -1337,12 +1629,13 @@ class ArrowDetectionService:
                 if aspect < 2.0:
                     continue
 
+                component_mask = np.zeros((h, w), dtype=np.uint8)
+                component_mask[labels == label] = 255
+
                 # Get hole orientation and verify radial alignment
                 shaft_angle = None
                 radial_cos = 0.0
                 try:
-                    component_mask = np.zeros((h, w), dtype=np.uint8)
-                    component_mask[labels == label] = 255
                     cnts, _ = cv2.findContours(component_mask, cv2.RETR_EXTERNAL,
                                                 cv2.CHAIN_APPROX_SIMPLE)
                     if cnts and len(cnts[0]) >= 5:
@@ -1371,9 +1664,23 @@ class ArrowDetectionService:
                 if radial_cos < 0.65:
                     continue
 
-                # Confidence: large + elongated + aligned = higher confidence
-                conf = min(0.60 + math.log(area) / 25.0 + (aspect - 2.5) * 0.03
-                           + radial_cos * 0.10, 0.85)
+                # Confidence: darkness depth is the primary freshness signal —
+                # a brand-new hole punches cleanly through the paper and reads
+                # very dark in the blackhat response, while an old/weathered
+                # hole is shallower (closer to the OTSU cutoff it barely
+                # passed). area/aspect/radial_cos alone saturate the old
+                # log(area)-based formula near 0.85 for almost every
+                # qualifying component on a heavily-speckled target — observed
+                # empirically as 6+ candidates all tying at 0.85 — which made
+                # the top-6 cap pick an arbitrary set instead of the freshest
+                # holes. Depth score spreads that out meaningfully.
+                depth_score = float(cv2.mean(blackhat, mask=component_mask)[0]) / 255.0
+                conf = min(
+                    0.35 + depth_score * 0.45
+                    + min(aspect, 5.0) * 0.02
+                    + radial_cos * 0.08,
+                    0.95,
+                )
 
                 candidates.append(ArrowInfo(
                     tip_x=float(cen_x),
@@ -1418,10 +1725,6 @@ class ArrowDetectionService:
         ph_arrows = self._detect_puncture_holes(pp, target)
         candidates.extend(ph_arrows)
 
-        # Method E: SIFT keypoints (arrow holes as distinctive features)
-        sift_arrows = self._arrows_by_sift(pp, target)
-        candidates.extend(sift_arrows)
-
         # Method A: Color segment arrows
         c_arrows = self._arrows_by_color(image, pp, target)
         candidates.extend(c_arrows)
@@ -1433,6 +1736,28 @@ class ArrowDetectionService:
         # Method C: Contour aspect ratio arrows
         cnt_arrows = self._arrows_by_contour(pp, target)
         candidates.extend(cnt_arrows)
+
+        # Method E: SIFT keypoints (arrow holes as distinctive features).
+        # SIFT has no shape/elongation/alignment requirement, so on a
+        # heavily-used target face (hundreds of old pinholes) it fires
+        # dozens of times at near-uniform low confidence — pure noise rather
+        # than signal (measured: 8-53 raw hits per test image, all clustered
+        # at the 0.40 floor). Keep it only as a corroborating signal for a
+        # candidate already found by a shape-based method above; a standalone
+        # SIFT hit with nothing else nearby is almost certainly an old hole.
+        sift_arrows = self._arrows_by_sift(pp, target)
+        corroborated_sift = [
+            s for s in sift_arrows
+            if any(math.hypot(s.tip_x - c.tip_x, s.tip_y - c.tip_y) < 20 for c in candidates)
+        ]
+        if corroborated_sift:
+            candidates.extend(corroborated_sift)
+        elif not candidates and sift_arrows:
+            # No shape-based method found anything at all (e.g. low-contrast
+            # shaft against a same-color ring) — fall back to SIFT's own
+            # best few guesses rather than reporting zero arrows.
+            sift_arrows.sort(key=lambda x: x.confidence, reverse=True)
+            candidates.extend(sift_arrows[:3])
 
         # Multi-method confidence boost: candidates detected by 2+ methods get boosted
         # Build proximity groups and boost confidence
@@ -1527,7 +1852,19 @@ class ArrowDetectionService:
             if not is_dup:
                 merged.append(cand)
 
-        return merged
+        # Precision filter for off-face false positives. Now that the ring fit
+        # is accurate, a tip's normalized distance is meaningful: a detection
+        # beyond the scoring face (nd > 1.0) sits on the stand/grass/paper
+        # margin — e.g. SIFT firing on a stand bolt below the target — and must
+        # not be scored as an arrow. Shaft-corroboration was tried here too but
+        # rejected: it also deletes real arrows that enter near-vertically
+        # (whose shafts hough_lines drops to avoid gridlines), so recall matters
+        # more than chasing the last old-hole false positive.
+        filtered = [
+            arr for arr in merged
+            if self._get_normalized_distance(arr.tip_x, arr.tip_y, target) <= 1.0
+        ]
+        return filtered if filtered else merged
 
     # ─── Arrow Detection Methods ────────────────────────────────────────────
 
@@ -2278,6 +2615,7 @@ class ArrowDetectionService:
                     result = self._calculate_zone(target, arrow)
                     result.confidence *= 0.65
                     result.method = f"fallback_dark_cluster+{target.method}"
+                    result.target = target
                     return result
 
         except Exception as exc:
@@ -2285,6 +2623,7 @@ class ArrowDetectionService:
 
         return DetectionResult(
             zone=None, points=None, confidence=0.1, method="fallback_no_arrow",
+            target=target,
         )
 
     def _pure_geometric_fallback(self, image: Any, pp: Dict) -> DetectionResult:

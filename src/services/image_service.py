@@ -418,9 +418,13 @@ class ImageService:
                             image, (cx, cy), (ra, rb),
                             angle, 0, 360, color, thick
                         )
-                        # Zone label at right edge of each ellipse
+                        # Zone label at right edge of each ellipse, clamped to
+                        # stay on-canvas (rings near the frame edge would
+                        # otherwise place labels above row 0 / past the sides).
                         lx = int(cx + ra * _math.cos(_math.radians(angle)) + 4)
                         ly = int(cy - rb * _math.sin(_math.radians(angle)))
+                        lx = max(2, min(lx, w - 20))
+                        ly = max(14, min(ly, h - 4))
                         cv2.putText(image, lbl, (lx, ly), font,
                                     font_scale * 0.55, color, 1)
                 # Center dot (green)
@@ -459,11 +463,15 @@ class ImageService:
                 cv2.line(image, (tx - ll, ty), (tx + ll, ty), color, 2)
                 cv2.line(image, (tx, ty - ll), (tx, ty + ll), color, 2)
 
-                # Arrow label: number + zone score
+                # Arrow label: number + zone score, clamped on-canvas (arrows
+                # near the top/edge of frame would otherwise place the label
+                # above row 0 or past the right edge).
                 label = f"{idx + 1}"
                 if arr_zone is not None:
                     label += f"({arr_zone})"
-                cv2.putText(image, label, (tx + 8, ty - 8),
+                label_x = max(2, min(tx + 8, w - 12 * len(label)))
+                label_y = max(14, min(ty - 8, h - 4))
+                cv2.putText(image, label, (label_x, label_y),
                             font, font_scale * 0.72, color, text_thick)
 
                 # Line from center to tip
@@ -487,15 +495,25 @@ class ImageService:
             label_txt  = f"Total: {total_pts} pts ({len(arrows)} arrows)"
             conf_txt   = f"Avg Conf: {int(avg_conf * 100)}% ({method})"
 
-            rect_w = max(300, int(len(conf_txt) * font_scale * 14))
+            rect_w = min(max(300, int(len(conf_txt) * font_scale * 14)), w - 16)
             rect_h = int(85 * font_scale)
+            # Truncate the method name with an ellipsis if it still overflows
+            # the clamped box width (long chained method strings, e.g.
+            # "zone_ellipses_blue+black+dark_confirmed+puncture_hole").
+            conf_font_scale = font_scale * 0.80
+            while (
+                cv2.getTextSize(conf_txt, font, conf_font_scale, max(1, text_thick - 1))[0][0]
+                > rect_w - 16
+                and len(conf_txt) > 12
+            ):
+                conf_txt = conf_txt[:-5] + "...)"
             cv2.rectangle(image, (8, 8), (8 + rect_w, 8 + rect_h), (0, 0, 0), -1)
             cv2.putText(image, label_txt,
                         (16, int(8 + 38 * font_scale)),
                         font, font_scale, (255, 255, 255), text_thick)
             cv2.putText(image, conf_txt,
                         (16, int(8 + 70 * font_scale)),
-                        font, font_scale * 0.80, (180, 180, 180), max(1, text_thick - 1))
+                        font, conf_font_scale, (180, 180, 180), max(1, text_thick - 1))
 
             _, compressed = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 80])
             return compressed.tobytes()
