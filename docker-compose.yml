@@ -22,6 +22,7 @@ services:
       - ./scripts:/app/scripts
       - ./tests:/app/tests
       - ./alembic:/app/alembic
+      - ./runs:/app/runs
       - storage_volume:/storage
     depends_on:
       db:

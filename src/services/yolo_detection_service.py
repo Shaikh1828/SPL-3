@@ -345,14 +345,31 @@ class YOLOArrowDetectionService:
                 
         return arrows
 
+    def _shaft_line_to_tip(
+        self, x1: float, y1: float, x2: float, y2: float, target: TargetInfo
+    ) -> Tuple[float, float, float]:
+        """
+        Determines the arrow tip from a shaft line (x1, y1)-(x2, y2).
+        The tip is the line endpoint closest to the target center.
+        """
+        d1 = math.hypot(x1 - target.center_x, y1 - target.center_y)
+        d2 = math.hypot(x2 - target.center_x, y2 - target.center_y)
+        
+        if d1 <= d2:
+            tip_x, tip_y = x1, y1
+        else:
+            tip_x, tip_y = x2, y2
+            
+        angle_deg = math.degrees(math.atan2(y2 - y1, x2 - x1)) % 180
+        return tip_x, tip_y, angle_deg
+
     def _refine_arrow_tip_locally(
         self, pp: Dict[str, Any], x1: int, y1: int, x2: int, y2: int, target: TargetInfo
     ) -> Optional[Tuple[float, float, float]]:
         """
         Runs local line detection (HoughLinesP) and contour aspect filters inside
-        the crop defined by the YOLO arrow bounding box to find the exact subpixel tip.
+        the crop defined by the YOLO arrow bounding box to find the exact tip.
         """
-        # Crop the morphological gradient and bilateral edges
         enhanced = pp["enhanced_bilateral"]
         edges = cv2.Canny(enhanced[y1:y2, x1:x2], 30, 110)
         
@@ -363,7 +380,7 @@ class YOLOArrowDetectionService:
         )
         
         if lines is not None and len(lines) > 0:
-            # Map lines back to absolute coordinates and pick the longest collinear line
+            # Map lines back to absolute coordinates and pick the longest line
             abs_lines = []
             for line in lines:
                 lx1, ly1, lx2, ly2 = line[0]
@@ -374,21 +391,12 @@ class YOLOArrowDetectionService:
             )
             
             if merged_lines:
-                # Find the longest line
                 longest_line = max(
                     merged_lines, 
                     key=lambda l: math.hypot(l[2] - l[0], l[3] - l[1])
                 )
-                
                 lx1, ly1, lx2, ly2 = longest_line
-                angle_deg = math.degrees(math.atan2(ly2 - ly1, lx2 - lx1)) % 180
-                
-                # Intersect this shaft line with target ellipses
-                tip = self.cv_fallback_service._shaft_line_to_tip(
-                    float(lx1), float(ly1), float(lx2), float(ly2), target
-                )
-                if tip:
-                    return tip[0], tip[1], angle_deg
+                return self._shaft_line_to_tip(float(lx1), float(ly1), float(lx2), float(ly2), target)
                     
         # Contour-based fallback inside crop
         cnts, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -402,39 +410,25 @@ class YOLOArrowDetectionService:
                     if min(bw, bh) > 0:
                         aspect = max(bw, bh) / min(bw, bh)
                         if aspect > 2.0:
-                            # Map coordinates back
                             pts = largest.reshape(-1, 2).astype(float)
                             pts[:, 0] += x1
                             pts[:, 1] += y1
                             
-                            # Fit line to contour points
                             [vx, vy, x0, y0] = cv2.fitLine(pts, cv2.DIST_L2, 0, 0.01, 0.01)
                             vx, vy = float(vx[0]), float(vy[0])
-                            x0, y0 = float(x0[0]), float(y0[0])
-                            angle_deg = math.degrees(math.atan2(vy, vx)) % 180
                             
-                            # Find tip as endpoint closest to target center
                             proj = pts @ np.array([vx, vy])
                             p1 = tuple(pts[int(np.argmin(proj))])
                             p2 = tuple(pts[int(np.argmax(proj))])
                             
-                            tip = self.cv_fallback_service._shaft_line_to_tip(
-                                p1[0], p1[1], p2[0], p2[1], target
-                            )
-                            if tip:
-                                return tip[0], tip[1], angle_deg
+                            return self._shaft_line_to_tip(p1[0], p1[1], p2[0], p2[1], target)
                                 
         return None
 
     def _deduplicate_arrows(self, arrows: List[ArrowInfo], target: TargetInfo) -> List[ArrowInfo]:
         """
-        Deduplicates arrows using shaft-overlap and tip distance constraints.
+        Deduplicates arrows using tip distance constraints.
         """
-        return self.cv_fallback_service._detect_arrows(
-            image=None, pp={"enhanced": None}, target=target
-        )  # Reuse NMS logic by filtering list
-        
-        # Let's write a simple clean implementation of the NMS helper:
         arrows.sort(key=lambda x: x.confidence, reverse=True)
         merged: List[ArrowInfo] = []
         
@@ -443,9 +437,9 @@ class YOLOArrowDetectionService:
             for existing in merged:
                 dist_tips = math.hypot(cand.tip_x - existing.tip_x, cand.tip_y - existing.tip_y)
                 
-                # Adaptive merge threshold
+                # Adaptive merge threshold based on target size
                 target_scale = target.outer_radius / 200.0
-                tip_thresh = max(30.0, 40.0 * target_scale)
+                tip_thresh = max(15.0, 25.0 * target_scale)
                 
                 if dist_tips < tip_thresh:
                     is_dup = True

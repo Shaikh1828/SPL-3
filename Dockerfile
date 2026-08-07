@@ -21,6 +21,9 @@ RUN apt-get update && apt-get install -y \
 RUN python -m venv /build/.venv && \
     /build/.venv/bin/pip install --upgrade pip setuptools wheel
 
+# Install PyTorch CPU wheels to avoid downloading 1.5GB CUDA libraries
+RUN /build/.venv/bin/pip install --default-timeout=600 torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
 # Install Python dependencies directly (with retries and extended timeout)
 RUN /build/.venv/bin/pip install --default-timeout=600 --retries 5 \
     fastapi==0.110.0 \
