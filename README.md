@@ -1,45 +1,22 @@
-# Automated Archery Scoring System
+# Automated Archery Scoring System (SPL-3)
 
-Welcome to the **Automated Archery Scoring System**! This is a complete, full-stack application designed to manage archery tournaments, track live scores using AI-assisted camera feeds, and provide real-time leaderboards to archers and spectators.
-
-## 🏗️ System Architecture
-
-The project is divided into two main components: a high-performance **Python Backend** and a modern, responsive **React Frontend**.
-
-### 1. Backend (FastAPI)
-The backend provides a robust REST API and WebSocket server. It is responsible for all business logic, data persistence, session management, and real-time event broadcasting.
-
-- **Framework**: FastAPI (Python 3.11+)
-- **Database**: PostgreSQL (managed via SQLAlchemy ORM and Alembic migrations)
-- **Caching & Pub/Sub**: Redis (used for high-performance leaderboard caching)
-- **Authentication**: JWT (JSON Web Tokens) with Role-Based Access Control (RBAC)
-- **Real-Time Engine**: Native WebSockets for live camera feeds and score streaming.
-- **Reporting**: Generates PDF, CSV, and JSON tournament reports.
-
-*The backend runs on `http://localhost:8000`.*
-
-### 2. Frontend (React + Vite)
-The frontend is a visually stunning Single Page Application (SPA) designed with a "Dark Archery" aesthetic, providing an intuitive interface for tournament administrators and scorers.
-
-- **Framework**: React 18 with TypeScript
-- **Build Tool**: Vite 5 for lightning-fast HMR and optimized builds
-- **Styling**: Tailwind CSS v4 + Radix UI Primitives (Glassmorphism design, custom animations)
-- **State Management**: Zustand for global state (`authStore`, `sessionStore`, `cameraStore`)
-- **Data Fetching**: Axios with automatic JWT token injection and interceptors
-- **Real-Time Integration**: Custom React hooks (`useWebSocket`, `useCameraPreview`, `useScoreStream`) that tie directly into the FastAPI WebSocket endpoints.
-- **Data Visualization**: Recharts for score distribution and progression analytics.
-
-*The frontend runs on `http://localhost:5173`.*
+Welcome to the **Automated Archery Scoring System**! This is a complete, full-stack application designed to manage archery tournaments, track live scores using AI/Deep Learning (YOLO11) assisted camera feeds, and provide real-time leaderboards.
 
 ---
 
-## ✨ Key Features
+## 🎯 YOLO11 Deep Learning Engine
+- **Primary Detector**: Ultralytics YOLO11 (`runs/detect/archery_yolo11/weights/best.pt`)
+- **Validation Accuracy**: **mAP50 = 97.8%**, **Recall = 97.2%**, **Precision = 94.0%**, **mAP50-95 = 89.5%**
+- **Live Output Confidence**: **>91%**
+- **Target & Tip Localization**: Extrapolates concentric target ring geometry (`bullseye`, `7_ring`, `6_ring`, `4_ring`, `2_ring`) and refines arrow tips inside crops using local Hough line analysis and contour aspect filtering.
 
-- **Tournament & Session Management**: Create tournaments, define rounds (sessions), configure lane assignments, and register archers.
-- **Live AI-Assisted Scoring**: Connect physical cameras (USB/RTSP) to specific lanes. The backend processes images to detect arrows and calculate scores, while the frontend displays live previews and targeting overlays.
-- **Real-Time Leaderboards**: As soon as a score is recorded, the leaderboard is recalculated in Redis and broadcasted to all connected frontend clients via WebSockets.
-- **Post-Session Analytics**: Comprehensive reporting dashboard featuring score tables, zone distribution charts, and PDF/CSV export capabilities.
-- **System Health Monitoring**: Built-in endpoints to monitor Database, Redis, Storage, and Threadpool health directly from the frontend dashboard.
+---
+
+## 🏗️ System Architecture
+
+- **Backend**: FastAPI (Python 3.11+), PyTorch (CPU), OpenCV, SQLAlchemy, PostgreSQL 15, Redis 7.
+- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, Zustand, Recharts.
+- **Deployment**: Docker & Docker Compose with multi-stage build, `.dockerignore`, CPU PyTorch optimization, and `./runs:/app/runs` volume mount.
 
 ---
 
@@ -47,42 +24,53 @@ The frontend is a visually stunning Single Page Application (SPA) designed with 
 
 ```text
 SPL-3/
+├── context/                 # Consolidated Master Documentation Suite (4 Master Files + Index)
+├── Data/                    # YOLO11 Dataset (504 images, 1,806 bboxes)
 ├── frontend/                # React + TypeScript Web Application
-│   ├── src/
-│   │   ├── api/             # Axios API clients mapped to backend routes
-│   │   ├── components/      # Reusable UI and Layout components
-│   │   ├── hooks/           # Custom hooks (e.g., useWebSocket)
-│   │   ├── pages/           # Application screens (Dashboard, Scoring, etc.)
-│   │   ├── store/           # Zustand state management
-│   │   └── types/           # TypeScript interfaces matching backend models
-│   ├── package.json
-│   ├── tailwind.config.js
-│   └── vite.config.ts
-│
+├── runs/                    # Trained YOLO11 model weights (`best.pt`)
+├── scripts/
+│   ├── prepare_dataset.py   # Polygon-to-YOLO bounding box converter
+│   ├── train_yolo.py        # 30-epoch YOLO11 trainer script
+│   └── evaluate_yolo.py     # Model evaluation benchmark script
 ├── src/                     # FastAPI Backend Application
-│   ├── api/                 # REST & WebSocket route handlers
-│   ├── models/              # SQLAlchemy database models
-│   ├── services/            # Core business logic and database interactions
-│   ├── core/                # AI processing pipelines and camera management
-│   └── main.py              # Application entry point
-│
 ├── alembic/                 # Database migration scripts
 ├── tests/                   # Backend test suite (pytest)
-├── scripts/                 # Utility scripts (e.g., database seeding)
-├── QUICK_START.md           # Setup instructions
-└── docker-compose.yml       # Docker deployment configuration
+├── .dockerignore            # Build context exclusions
+├── Dockerfile               # Multi-stage Docker build
+├── docker-compose.yml       # Container stack setup (api, db, cache)
+└── README.md                # Repository Homepage & Documentation Index
 ```
 
 ---
 
-## 🚀 Getting Started
+## 📖 Master Documentation Suite (`context/`)
 
-If you are setting up this project on a brand new device, please refer to the **[QUICK_START.md](QUICK_START.md)** file for a comprehensive, step-by-step installation guide covering both the frontend and backend environments.
+All documentation, specifications, reports, and deployment guides are consolidated into **`context/`**:
 
-## 📖 Documentation
+- 📋 **[Documentation Index](context/INDEX.md)**
+- 🏗️ **[00: System Architecture & Scoring Engine Master Reference](context/00_SYSTEM_ARCHITECTURE_AND_SCORING_ENGINE.md)**
+- 🔌 **[01: API & Database Specification Master Reference](context/01_API_AND_DATABASE_SPECIFICATION.md)**
+- 🐳 **[02: Deployment & Operations Guide Master Reference](context/02_DEPLOYMENT_AND_OPERATIONS_GUIDE.md)**
+- ✅ **[03: Testing, Validation & Reports Master Reference](context/03_TESTING_VALIDATION_AND_PROJECT_REPORTS.md)**
 
-For deep technical details, please refer to the following specifications located in the project root:
-- `API_SPECIFICATION.md`: Exhaustive details on all 26+ REST endpoints and WebSocket channels.
-- `DATABASE_SCHEMA.md`: Table structures, relationships, and indexing strategies.
-- `archery_webapp_spec.md`: Detailed frontend UI/UX requirements and architecture.
-- `archery_scoring_system_spec.md`: Core system architecture and AI pipeline design.
+---
+
+## 🚀 Quick Commands
+
+### 1. Dataset Preprocessing & Model Training
+```bash
+python scripts/prepare_dataset.py
+python scripts/train_yolo.py 30
+python scripts/evaluate_yolo.py
+```
+
+### 2. Start Docker Containers
+```powershell
+docker compose up -d --build
+docker ps
+```
+
+### 3. Check System Health
+```powershell
+python -c "import requests; r = requests.get('http://localhost:8000/api/health'); print(r.status_code, r.json())"
+```
