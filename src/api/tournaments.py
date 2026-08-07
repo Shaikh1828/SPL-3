@@ -101,7 +101,8 @@ async def create_tournament(
 
         tournament = Tournament(
             name=tournament_data.name,
-            location=tournament_data.location,
+            location=tournament_data.location or "",
+            description=tournament_data.description,
             start_date=tournament_data.start_date,
             end_date=tournament_data.end_date,
             created_by_user_id=current_user.id,

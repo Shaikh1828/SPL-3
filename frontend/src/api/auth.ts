@@ -10,15 +10,13 @@ export const authApi = {
 
   refresh: (refreshToken: string) =>
     apiClient
-      .post<AuthResponse>('/auth/refresh', null, {
-        headers: { Authorization: `Bearer ${refreshToken}` },
-      })
+      .post<AuthResponse>('/auth/refresh', { refresh_token: refreshToken })
       .then((r) => r.data),
 
   resetPassword: (currentPassword: string, newPassword: string) =>
     apiClient
       .post('/auth/reset-password', {
-        current_password: currentPassword,
+        old_password: currentPassword,
         new_password: newPassword,
       })
       .then((r) => r.data),

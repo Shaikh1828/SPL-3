@@ -133,6 +133,7 @@ export default function LoginPage() {
                   {...register('username')}
                   id="username"
                   type="text"
+                  autoComplete="username"
                   placeholder="Enter your username"
                   className={cn('input-dark w-full pl-10', errors.username && 'border-red-500/50')}
                 />
@@ -150,6 +151,7 @@ export default function LoginPage() {
                   {...register('password')}
                   id="password"
                   type={showPass ? 'text' : 'password'}
+                  autoComplete="current-password"
                   placeholder="Enter your password"
                   className={cn('input-dark w-full pl-10 pr-10', errors.password && 'border-red-500/50')}
                 />

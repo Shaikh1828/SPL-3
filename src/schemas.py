@@ -72,7 +72,7 @@ class TournamentCreate(BaseModel):
     """Create tournament request."""
 
     name: str = Field(..., max_length=200)
-    location: str = Field(..., max_length=200)
+    location: Optional[str] = Field(None, max_length=200)
     description: Optional[str] = Field(None, max_length=1000)
     start_date: datetime
     end_date: datetime

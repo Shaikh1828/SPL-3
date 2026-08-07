@@ -32,9 +32,11 @@ except ImportError:
 from src.config import settings
 from src.events import publish_event, EventType
 from src.services.arrow_detection_service import ArrowDetectionService
+from src.services.yolo_detection_service import YOLOArrowDetectionService
 
 # Singleton detection service (stateless, reuse across calls)
 _arrow_detector = ArrowDetectionService()
+_yolo_detector = YOLOArrowDetectionService()
 
 
 class ImageService:
@@ -73,10 +75,16 @@ class ImageService:
                             points (int|None), distance_ratio (float|None)
         """
         try:
-            result = _arrow_detector.detect(
-                image_data=image_data,
-                image_path=image_path,
-            )
+            if settings.use_yolo and _yolo_detector.model_loaded:
+                result = _yolo_detector.detect(
+                    image_data=image_data,
+                    image_path=image_path,
+                )
+            else:
+                result = _arrow_detector.detect(
+                    image_data=image_data,
+                    image_path=image_path,
+                )
             output = result.to_dict()
             logger.info(
                 "arrow_detection_complete",

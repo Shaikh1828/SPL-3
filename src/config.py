@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     image_jpeg_quality: int = 70
     image_resize_width: int = 1024
     image_resize_height: int = 1024
+    
+    # YOLO Model Settings
+    yolo_model_path: str = "runs/detect/archery_yolo11/weights/best.pt"
+    use_yolo: bool = True
 
     # WebSocket
     websocket_disconnect_grace_period_seconds: int = 30

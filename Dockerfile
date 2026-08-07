@@ -50,7 +50,8 @@ RUN /build/.venv/bin/pip install --default-timeout=600 --retries 5 \
     pytest-cov==4.1.0 \
     aiosqlite==0.19.0 \
     numpy==1.24.3 \
-    opencv-python==4.8.1.78
+    opencv-python==4.8.1.78 \
+    ultralytics==8.3.241
 
 # ============================================================================
 # Runtime stage

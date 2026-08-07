@@ -41,7 +41,13 @@ export default function TournamentsPage() {
       return
     }
     try {
-      await tournamentsApi.create(newTournamentData)
+      // Convert date-only strings to ISO datetime for backend
+      const payload = {
+        ...newTournamentData,
+        start_date: new Date(newTournamentData.start_date + 'T00:00:00').toISOString(),
+        end_date: new Date(newTournamentData.end_date + 'T23:59:59').toISOString(),
+      }
+      await tournamentsApi.create(payload)
       toast.success('Tournament created successfully')
       setIsCreateTournamentOpen(false)
       setNewTournamentData({ name: '', location: '', description: '', start_date: '', end_date: '' })
