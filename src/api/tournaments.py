@@ -15,7 +15,7 @@ import structlog
 
 from src.database import get_db
 from src.schemas import TournamentCreate, TournamentResponse
-from src.dependencies import get_current_user, require_role
+from src.dependencies import get_current_user, require_roles
 from src.models.user import User
 from src.models.tournament import Tournament
 
@@ -71,7 +71,7 @@ async def list_tournaments(
 @router.post("", response_model=TournamentResponse, status_code=status.HTTP_201_CREATED)
 async def create_tournament(
     tournament_data: TournamentCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles(["admin", "scorer"])),
     db: Session = Depends(get_db),
 ):
     """

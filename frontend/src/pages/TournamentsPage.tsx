@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Trophy, Plus, Calendar, MapPin, ChevronRight, PlayCircle, Archive, X } from 'lucide-react'
+import { Trophy, Plus, Calendar, MapPin, ChevronRight, PlayCircle, Archive, X, ShieldAlert } from 'lucide-react'
 import { tournamentsApi } from '@/api/tournaments'
 import { sessionsApi } from '@/api/sessions'
 import { useSessionStore } from '@/store/sessionStore'
+import { useAuthStore } from '@/store/authStore'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { cn, formatDate } from '@/lib/utils'
@@ -11,6 +12,8 @@ import type { Tournament, Session } from '@/types'
 export default function TournamentsPage() {
   const navigate = useNavigate()
   const { setActiveSession, setActiveTournament } = useSessionStore()
+  const { user } = useAuthStore()
+  const canManageTournaments = user?.role === 'admin' || user?.role === 'scorer'
   const [tournaments, setTournaments] = useState<Tournament[]>([])
   const [expandedTId, setExpandedTId] = useState<number | null>(null)
   const [sessionsMap, setSessionsMap] = useState<Record<number, Session[]>>({})
@@ -127,14 +130,23 @@ export default function TournamentsPage() {
 
   return (
     <div className="p-6 h-full flex flex-col animate-in">
+      {!canManageTournaments && (
+        <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-300 text-sm flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4 shrink-0 text-amber-400" />
+          <span>Spectator Mode: View tournaments and session schedules (Creation & management restricted to Admin & Scorer).</span>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-100">Tournaments</h1>
           <p className="text-sm text-slate-500 mt-0.5">Manage tournaments and scoring sessions</p>
         </div>
-        <button onClick={() => setIsCreateTournamentOpen(true)} className="btn-primary flex items-center gap-2">
-          <Plus className="w-4 h-4" /> New Tournament
-        </button>
+        {canManageTournaments && (
+          <button onClick={() => setIsCreateTournamentOpen(true)} className="btn-primary flex items-center gap-2">
+            <Plus className="w-4 h-4" /> New Tournament
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto space-y-4">
@@ -172,12 +184,15 @@ export default function TournamentsPage() {
               <div className="bg-navy-900/50 border-t border-navy-700 p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h4 className="text-sm font-medium text-slate-300">Sessions</h4>
-                  <button 
-                    onClick={() => { setActiveTournamentForSession(t.id); setIsCreateSessionOpen(true); }}
-                    className="btn-ghost text-xs flex items-center gap-1"
-                  >
-                    <Plus className="w-3 h-3" /> Add Session
-                  </button>
+                  {canManageTournaments && (
+                    <button 
+                      onClick={() => { setActiveTournamentForSession(t.id); setIsCreateSessionOpen(true); }}
+                      className="btn-ghost text-xs flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" /> Add Session
+                    </button>
+                  )}
+                </div>
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">

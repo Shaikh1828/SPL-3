@@ -12,6 +12,9 @@ import toast from 'react-hot-toast'
 import { cn, getConfidenceColor } from '@/lib/utils'
 import type { Camera, CameraLaneAssignment, Score, SessionArcher } from '@/types'
 
+import { useAuthStore } from '@/store/authStore'
+import { ShieldAlert } from 'lucide-react'
+
 function CameraFeed({ cameraId, label, status }: { cameraId: number, label: string, status: string }) {
   const imgRef = useRef<HTMLImageElement>(null)
   useCameraPreview(cameraId, imgRef)
@@ -49,7 +52,8 @@ function ScoringLane({
   onUploadImage,
   isCalculating,
   lastScore,
-  onViewImage
+  onViewImage,
+  canScore
 }: { 
   assignment: CameraLaneAssignment, 
   camera?: Camera,
@@ -58,7 +62,8 @@ function ScoringLane({
   onUploadImage: (laneId: number, file: File) => void,
   isCalculating: boolean,
   lastScore?: Score | null,
-  onViewImage: (score: Score) => void
+  onViewImage: (score: Score) => void,
+  canScore: boolean
 }) {
   return (
     <div className="glass-card p-4 flex flex-col gap-4">
@@ -78,40 +83,42 @@ function ScoringLane({
         status={camera?.status ?? 'disconnected'} 
       />
 
-      <div className="flex flex-col gap-2 mt-2">
-        <button
-          onClick={() => onCalculate(assignment.camera_id, assignment.lane)}
-          disabled={isCalculating || camera?.status !== 'connected' || !archer}
-          className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50"
-        >
-          {isCalculating ? (
-            <><Activity className="w-4 h-4 animate-spin" /> Analyzing...</>
-          ) : (
-            <><CameraIcon className="w-4 h-4" /> Calculate Score</>
-          )}
-        </button>
+      {canScore && (
+        <div className="flex flex-col gap-2 mt-2">
+          <button
+            onClick={() => onCalculate(assignment.camera_id, assignment.lane)}
+            disabled={isCalculating || camera?.status !== 'connected' || !archer}
+            className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {isCalculating ? (
+              <><Activity className="w-4 h-4 animate-spin" /> Analyzing...</>
+            ) : (
+              <><CameraIcon className="w-4 h-4" /> Calculate Score</>
+            )}
+          </button>
 
-        <label className={cn(
-          "btn-ghost w-full flex items-center justify-center gap-2 cursor-pointer border border-dashed border-navy-600 hover:border-gold-500 hover:text-gold-400 py-2 rounded-lg text-sm transition-colors",
-          (isCalculating || !archer) && "opacity-50 pointer-events-none"
-        )}>
-          <Upload className="w-4 h-4" />
-          <span>Upload Shot Image</span>
-          <input
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0]
-              if (file) {
-                onUploadImage(assignment.lane, file)
-              }
-              e.target.value = ''
-            }}
-            disabled={isCalculating || !archer}
-          />
-        </label>
-      </div>
+          <label className={cn(
+            "btn-ghost w-full flex items-center justify-center gap-2 cursor-pointer border border-dashed border-navy-600 hover:border-gold-500 hover:text-gold-400 py-2 rounded-lg text-sm transition-colors",
+            (isCalculating || !archer) && "opacity-50 pointer-events-none"
+          )}>
+            <Upload className="w-4 h-4" />
+            <span>Upload Shot Image</span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) {
+                  onUploadImage(assignment.lane, file)
+                }
+                e.target.value = ''
+              }}
+              disabled={isCalculating || !archer}
+            />
+          </label>
+        </div>
+      )}
 
       {lastScore && (
         <div className="mt-2 p-3 bg-navy-800/50 rounded-lg border border-navy-700">
@@ -140,6 +147,8 @@ export default function ScoringPage() {
   const navigate = useNavigate()
   const { activeSession, currentEnd, setCurrentEnd } = useSessionStore()
   const { cameras, setCameras } = useCameraStore()
+  const { user } = useAuthStore()
+  const canScore = user?.role === 'admin' || user?.role === 'scorer'
   const [assignments, setAssignments] = useState<CameraLaneAssignment[]>([])
   const [archers, setArchers] = useState<SessionArcher[]>([])
   const [calculating, setCalculating] = useState<Record<number, boolean>>({})
@@ -306,6 +315,13 @@ export default function ScoringPage() {
 
   return (
     <div className="p-6 h-full flex flex-col animate-in">
+      {!canScore && (
+        <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-300 text-sm flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4 shrink-0 text-amber-400" />
+          <span>Spectator Mode: Live scoring overview (Score recording & camera calculations restricted to Admin & Scorer).</span>
+        </div>
+      )}
+
       {/* Header controls */}
       <div className="flex items-center justify-between mb-6 bg-navy-800 p-4 rounded-xl border border-navy-700">
         <div className="flex items-center gap-4">
@@ -334,19 +350,21 @@ export default function ScoringPage() {
           </div>
         </div>
         
-        <div className="flex items-center gap-3">
-          <button onClick={handleCalculateAll} className="btn-primary flex items-center gap-2">
-            <CameraIcon className="w-4 h-4" />
-            Calculate All
-          </button>
-          <button 
-            onClick={handleEndSession}
-            className="btn-ghost flex items-center gap-2 text-red-400 hover:text-red-300 hover:bg-red-500/10"
-          >
-            <Square className="w-4 h-4" />
-            End Session
-          </button>
-        </div>
+        {canScore && (
+          <div className="flex items-center gap-3">
+            <button onClick={handleCalculateAll} className="btn-primary flex items-center gap-2">
+              <CameraIcon className="w-4 h-4" />
+              Calculate All
+            </button>
+            <button 
+              onClick={handleEndSession}
+              className="btn-ghost flex items-center gap-2 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+            >
+              <Square className="w-4 h-4" />
+              End Session
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main Grid & Archers sidebar */}
@@ -370,6 +388,7 @@ export default function ScoringPage() {
                     setSelectedScore(score)
                     setIsModalOpen(true)
                   }}
+                  canScore={canScore}
                 />
               )
             })}
@@ -388,12 +407,14 @@ export default function ScoringPage() {
               <Trophy className="w-4 h-4 text-gold-400" />
               Archers
             </h2>
-            <button 
-              onClick={() => setIsAddArcherOpen(true)}
-              className="btn-primary text-xs py-1 px-2.5 flex items-center gap-1"
-            >
-              <Plus className="w-3 h-3" /> Add Archer
-            </button>
+            {canScore && (
+              <button 
+                onClick={() => setIsAddArcherOpen(true)}
+                className="btn-primary text-xs py-1 px-2.5 flex items-center gap-1"
+              >
+                <Plus className="w-3 h-3" /> Add Archer
+              </button>
+            )}
           </div>
 
           <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">

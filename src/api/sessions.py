@@ -17,7 +17,7 @@ import structlog
 
 from src.database import get_db
 from src.schemas import SessionCreate, SessionResponse, SessionArcherResponse
-from src.dependencies import get_current_user
+from src.dependencies import get_current_user, require_roles
 from src.models.user import User
 from src.models.tournament import Tournament, Session
 from src.models.scoring import SessionArcher
@@ -26,6 +26,8 @@ from src.events import publish_event, EventType
 logger = structlog.get_logger()
 
 router = APIRouter(tags=["sessions"])
+
+require_session_manager = require_roles(["admin", "scorer"])
 
 
 @router.get("/tournaments/{tournament_id}/sessions", response_model=Dict[str, Any])
@@ -84,7 +86,7 @@ async def list_sessions(
 async def create_session(
     tournament_id: int,
     session_data: SessionCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_session_manager),
     db: SQLSession = Depends(get_db),
 ):
     """
@@ -187,7 +189,7 @@ async def get_session(session_id: int, db: SQLSession = Depends(get_db)):
 async def update_session_status(
     session_id: int,
     update_data: dict,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_session_manager),
     db: SQLSession = Depends(get_db),
 ):
     """
@@ -258,7 +260,7 @@ async def update_session_status(
 async def add_archer_to_session(
     session_id: int,
     archer_data: dict,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_session_manager),
     db: SQLSession = Depends(get_db),
 ):
     """

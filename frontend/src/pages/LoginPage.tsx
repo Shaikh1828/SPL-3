@@ -106,7 +106,7 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <p className="text-xs text-slate-600">© 2026 Archery Scoring System — AIDLC Generated</p>
+        <p className="text-xs text-slate-600">© 2026 Archery Scoring System</p>
       </div>
 
       {/* Right panel — login form */}

@@ -24,6 +24,7 @@ import base64
 from src.database import get_db
 from src.schemas import ScoreCreate, ScoreResponse, ScoreValidateRequest, BatchDirectoryRequest, ScoreOverrideRequest
 from src.dependencies import get_current_user
+from src.dependencies import get_current_user, require_roles
 from src.models.user import User
 from src.models.scoring import Score, SessionArcher
 from src.models.tournament import Session
@@ -37,12 +38,14 @@ logger = structlog.get_logger()
 
 router = APIRouter(tags=["scores"])
 
+require_scorer_or_admin = require_roles(["admin", "scorer"])
+
 
 @router.post("/sessions/{session_id}/scores", response_model=ScoreResponse, status_code=status.HTTP_201_CREATED)
 async def record_score(
     session_id: int,
     score_data: ScoreCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_scorer_or_admin),
     db: SQLSession = Depends(get_db),
 ):
     """
@@ -137,7 +140,7 @@ async def upload_score_image(
     round: int = Form(...),
     arrow_num: Optional[int] = Form(None),
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_scorer_or_admin),
     db: SQLSession = Depends(get_db),
 ):
     """
@@ -320,7 +323,7 @@ async def upload_score_image(
 async def batch_score_directory(
     session_id: int,
     request_data: BatchDirectoryRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_scorer_or_admin),
     db: SQLSession = Depends(get_db),
 ):
     """

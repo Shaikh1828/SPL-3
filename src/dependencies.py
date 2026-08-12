@@ -109,3 +109,26 @@ def require_role(required_role: str):
         return user
 
     return check_role
+
+
+def require_roles(allowed_roles: list[str]):
+    """
+    Dependency factory for role-based access control allowing multiple roles or admin.
+
+    Args:
+        allowed_roles: List of allowed roles (e.g. ['admin', 'scorer'])
+
+    Returns:
+        Dependency function
+    """
+
+    def check_roles(user: User = Depends(get_current_user)) -> User:
+        if user.role not in allowed_roles and user.role != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"This action requires one of the following roles: {', '.join(allowed_roles)}",
+            )
+        return user
+
+    return check_roles
+

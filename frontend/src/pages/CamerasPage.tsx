@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Camera as CameraIcon, Plus, RefreshCw, Trash2, Settings, X } from 'lucide-react'
+import { Camera as CameraIcon, Plus, RefreshCw, Trash2, Settings, X, ShieldAlert } from 'lucide-react'
 import { useCameraStore } from '@/store/cameraStore'
 import { camerasApi } from '@/api/cameras'
 import { useSessionStore } from '@/store/sessionStore'
+import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
 import { cn } from '@/lib/utils'
 import type { Camera } from '@/types'
@@ -10,6 +11,8 @@ import type { Camera } from '@/types'
 export default function CamerasPage() {
   const { cameras, setCameras, updateCameraStatus } = useCameraStore()
   const { activeSession } = useSessionStore()
+  const { user } = useAuthStore()
+  const canManageCameras = user?.role === 'admin' || user?.role === 'scorer'
   const [loading, setLoading] = useState(false)
 
   // Modals and global list state
@@ -102,8 +105,19 @@ export default function CamerasPage() {
       await camerasApi.unassign(activeSession.id, cameraId)
       toast.success('Camera removed from session')
       loadCameras()
-    } catch {
-      toast.error('Failed to remove camera')
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to unassign camera')
+    }
+  }
+
+  const handleReconnect = async (cameraId: number) => {
+    try {
+      updateCameraStatus(cameraId, 'disconnected')
+      await camerasApi.reconnect(cameraId)
+      toast.success('Reconnection initiated')
+      setTimeout(loadCameras, 2000)
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to reconnect camera')
     }
   }
 
@@ -111,28 +125,27 @@ export default function CamerasPage() {
     loadCameras()
   }, [activeSession])
 
-  const handleReconnect = async (id: number) => {
-    try {
-      updateCameraStatus(id, 'connected')
-      toast.success('Camera reconnected')
-    } catch {
-      toast.error('Failed to reconnect')
-      updateCameraStatus(id, 'error')
-    }
-  }
-
   if (!activeSession) {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-        <CameraIcon className="w-16 h-16 text-slate-700 mb-4" />
-        <h2 className="text-xl font-semibold text-slate-200 mb-2">No Active Session</h2>
-        <p className="text-slate-500 mb-6">Cameras are managed per session. Select an active session first.</p>
+      <div className="p-6 h-full flex items-center justify-center">
+        <div className="glass-card max-w-md w-full p-8 text-center">
+          <CameraIcon className="w-12 h-12 text-gold-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-slate-100 mb-2">No Active Session</h2>
+          <p className="text-slate-400 text-sm">Please select an active tournament session to manage cameras.</p>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="p-6 h-full flex flex-col animate-in">
+      {!canManageCameras && (
+        <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-300 text-sm flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4 shrink-0 text-amber-400" />
+          <span>Spectator Mode: View camera list and connection statuses (Camera management is restricted to Admin & Scorer).</span>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-100">Camera Management</h1>
@@ -143,9 +156,11 @@ export default function CamerasPage() {
           <button onClick={loadCameras} disabled={loading} className="btn-ghost flex items-center gap-2">
             <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} /> Refresh
           </button>
-          <button onClick={handleOpenAddModal} className="btn-primary flex items-center gap-2">
-            <Plus className="w-4 h-4" /> Add Camera
-          </button>
+          {canManageCameras && (
+            <button onClick={handleOpenAddModal} className="btn-primary flex items-center gap-2">
+              <Plus className="w-4 h-4" /> Add Camera
+            </button>
+          )}
         </div>
       </div>
 
@@ -169,29 +184,31 @@ export default function CamerasPage() {
               <h3 className="font-semibold text-slate-200">{camera.name}</h3>
               <p className="text-sm text-slate-500 mb-4">Type: {camera.camera_type}</p>
               
-              <div className="mt-auto flex items-center justify-between pt-4 border-t border-navy-700">
-                <div className="flex gap-2">
-                  <button className="btn-ghost p-2" title="Settings">
-                    <Settings className="w-4 h-4 text-slate-400" />
-                  </button>
-                  <button 
-                    onClick={() => handleUnassignCamera(camera.id)}
-                    className="btn-ghost p-2 text-red-400 hover:text-red-300" 
-                    title="Remove"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+              {canManageCameras && (
+                <div className="mt-auto flex items-center justify-between pt-4 border-t border-navy-700">
+                  <div className="flex gap-2">
+                    <button className="btn-ghost p-2" title="Settings">
+                      <Settings className="w-4 h-4 text-slate-400" />
+                    </button>
+                    <button 
+                      onClick={() => handleUnassignCamera(camera.id)}
+                      className="btn-ghost p-2 text-red-400 hover:text-red-300" 
+                      title="Remove"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  
+                  {camera.status !== 'connected' && (
+                    <button 
+                      onClick={() => handleReconnect(camera.id)}
+                      className="btn-primary text-sm py-1.5 px-3 flex items-center gap-2"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" /> Reconnect
+                    </button>
+                  )}
                 </div>
-                
-                {camera.status !== 'connected' && (
-                  <button 
-                    onClick={() => handleReconnect(camera.id)}
-                    className="btn-primary text-sm py-1.5 px-3 flex items-center gap-2"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" /> Reconnect
-                  </button>
-                )}
-              </div>
+              )}
             </div>
           </div>
         ))}

@@ -4,7 +4,15 @@
 
 ## 1. REST & WebSocket API Specification
 
-The FastAPI backend exposes 26 endpoints (25 REST endpoints + 1 WebSocket endpoint) across 11 route files in `src/api/`.
+The FastAPI backend exposes 26 endpoints across 11 route files in `src/api/` guarded by strict Role-Based Access Control (RBAC):
+
+### Role Permission Matrix
+| System Role | Tournament/Session Ops | Camera Ops | Image Upload & Scoring | Score Overrides | User Management |
+|---|---|---|---|---|---|
+| **`admin`** | ✅ Full Access | ✅ Full Access | ✅ Full Access | ✅ Full Access | ✅ Full Access |
+| **`scorer`** | ✅ Create/Manage | ✅ Connect/Assign | ✅ Upload/Record | ✅ Allowed | ❌ Restricted |
+| **`spectator`** | 👁️ Read-Only | 👁️ Read-Only | ❌ Restricted | ❌ Restricted | ❌ Restricted |
+| **`archer`** | 👁️ Read-Only | 👁️ Read-Only | ❌ Restricted | ❌ Restricted | ❌ Restricted |
 
 ### 1.1 Authentication Routes (`src/api/auth.py`)
 

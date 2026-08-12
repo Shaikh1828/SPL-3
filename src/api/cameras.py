@@ -18,7 +18,7 @@ import structlog
 
 from src.database import get_db
 from src.schemas import CameraCreate, CameraResponse, CameraAssignRequest, CameraAssignmentResponse
-from src.dependencies import get_current_user
+from src.dependencies import get_current_user, require_roles
 from src.models.user import User
 from src.models.camera import Camera, CameraLaneAssignment
 from src.models.tournament import Session
@@ -28,6 +28,9 @@ from src.events import publish_event, EventType
 logger = structlog.get_logger()
 
 router = APIRouter(tags=["cameras"])
+
+# Dependency shortcut for camera management
+require_camera_manager = require_roles(["admin", "scorer"])
 
 
 @router.get("/sessions/{session_id}/cameras", response_model=List[CameraResponse])
@@ -74,7 +77,7 @@ async def list_session_cameras(session_id: int, db: SQLSession = Depends(get_db)
 async def connect_camera(
     session_id: int,
     camera_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_camera_manager),
     db: SQLSession = Depends(get_db),
 ):
     """
@@ -85,7 +88,7 @@ async def connect_camera(
     Args:
         session_id: Session ID
         camera_id: Camera ID
-        current_user: Authenticated user
+        current_user: Authenticated user (Requires Admin or Scorer)
         db: Database session
 
     Returns:
@@ -132,7 +135,7 @@ async def connect_camera(
 async def disconnect_camera(
     session_id: int,
     camera_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_camera_manager),
     db: SQLSession = Depends(get_db),
 ):
     """
@@ -143,7 +146,7 @@ async def disconnect_camera(
     Args:
         session_id: Session ID
         camera_id: Camera ID
-        current_user: Authenticated user
+        current_user: Authenticated user (Requires Admin or Scorer)
         db: Database session
 
     Returns:
@@ -189,7 +192,7 @@ async def disconnect_camera(
 @router.post("/cameras/{camera_id}/reconnect", response_model=dict)
 async def reconnect_camera(
     camera_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_camera_manager),
     db: SQLSession = Depends(get_db),
 ):
     """
@@ -201,7 +204,7 @@ async def reconnect_camera(
 
     Args:
         camera_id: Camera ID
-        current_user: Authenticated user
+        current_user: Authenticated user (Requires Admin or Scorer)
         db: Database session
 
     Returns:
@@ -247,7 +250,7 @@ async def reconnect_camera(
 async def assign_camera_to_lane(
     session_id: int,
     assign_data: CameraAssignRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_camera_manager),
     db: SQLSession = Depends(get_db),
 ):
     """
@@ -258,7 +261,7 @@ async def assign_camera_to_lane(
     Args:
         session_id: Session ID
         assign_data: Assignment details (camera_id, lane)
-        current_user: Authenticated user
+        current_user: Authenticated user (Requires Admin or Scorer)
         db: Database session
 
     Returns:
@@ -345,9 +348,9 @@ async def list_global_cameras(
 async def register_camera(
     camera_data: CameraCreate,
     db: SQLSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_camera_manager),
 ):
-    """Register a new camera in the system."""
+    """Register a new camera in the system (Requires Admin or Scorer)."""
     try:
         # Check duplicate name
         existing = db.query(Camera).filter(Camera.name == camera_data.name).first()
@@ -383,9 +386,9 @@ async def register_camera(
 async def delete_camera(
     camera_id: int,
     db: SQLSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_camera_manager),
 ):
-    """Delete a camera from the system."""
+    """Delete a camera from the system (Requires Admin or Scorer)."""
     try:
         camera = db.query(Camera).filter(Camera.id == camera_id).first()
         if not camera:
@@ -416,9 +419,9 @@ async def unassign_camera(
     session_id: int,
     camera_id: int,
     db: SQLSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_camera_manager),
 ):
-    """Unassign a camera from a session lane."""
+    """Unassign a camera from a session lane (Requires Admin or Scorer)."""
     try:
         assignment = (
             db.query(CameraLaneAssignment)
@@ -443,6 +446,7 @@ async def unassign_camera(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to remove camera assignment",
         )
+
 
 
 @router.get("/sessions/{session_id}/assignments", response_model=List[CameraAssignmentResponse])

@@ -68,3 +68,30 @@ The SE801 Midterm Technical Report documents the engineering lifecycle of the Au
    - **Database Layer**: PostgreSQL 15 schema with 8 normalized tables and Alembic migrations.
    - **AI/ML Layer**: YOLO11 model trained on 1,806 bounding box annotations scoring **97.8% mAP50**.
    - **Deployment Layer**: Multi-stage Docker build with `.dockerignore` and PyTorch CPU optimization.
+
+## 4. Training Process
+
+### Data Preparation
+1. Model কীভাবে Train করবেন? (How to Train)
+bash
+    ১. Dataset Label Clean/Standardize করতে (একবার চালাতে হবে)
+      python scripts/prepare_dataset.py
+    ২. Training চালাতে
+      python scripts/train_yolo.py 30
+Trained best model weights best.pt এ সেভ হয়েছে।
+
+2. Model Test / Evaluate কীভাবে করবেন? (How to Test)
+bash
+python scripts/evaluate_yolo.py
+এটি Validation Performance (mAP metrics) প্রিন্ট করবে এবং test image-এ prediction visualize করবে।
+
+3. অন্য Machine-এ Trained Model কীভাবে চালাবেন? (Multi-Machine Deployment)
+আপনার প্রজেক্টের runs/detect/archery_yolo11/weights/best.pt ফাইলটি কপি করে অন্য পিসিতে নিয়ে যান।
+নতুন পিসিতে ইনস্টল করুন:
+bash
+pip install ultralytics opencv-python
+নিচের কোডটি চালিয়ে Inference নিন:
+python
+from ultralytics import YOLO
+model = YOLO("best.pt")
+results = model.predict(source="path/to/test_image.jpg", conf=0.5, save=True)

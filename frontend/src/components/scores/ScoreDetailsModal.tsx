@@ -30,8 +30,7 @@ export function ScoreDetailsModal({
   onOverrideSuccess,
 }: ScoreDetailsModalProps) {
   const { user } = useAuthStore()
-  const isAdmin = user?.role === 'admin'
-
+  const canOverride = user?.role === 'admin' || user?.role === 'scorer'
   const [activeTab, setActiveTab] = useState<'annotated' | 'raw'>('annotated')
   const [overrideZone, setOverrideZone] = useState<number>(score?.zone ?? 0)
   const [overridePoints, setOverridePoints] = useState<number>(score?.points ?? 0)
@@ -72,7 +71,7 @@ export function ScoreDetailsModal({
         points: overridePoints,
         reason: overrideReason,
       })
-      toast.success('Score overridden successfully by Admin')
+      toast.success('Score overridden successfully')
       if (onOverrideSuccess) {
         onOverrideSuccess()
       }
@@ -98,105 +97,71 @@ export function ScoreDetailsModal({
           <div className="flex justify-between items-center w-full mb-3">
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
               <ImageIcon className="w-3.5 h-3.5 text-gold-500" />
-              Target Visualizer
+              {activeTab === 'annotated' ? 'Annotated Target Detection' : 'Raw Original Image'}
             </span>
-            
-            {/* Tab selector (Only if not dry-run or if dry-run has raw) */}
-            {!isDryRun && (
-              <div className="flex bg-navy-900 rounded-lg p-0.5 border border-navy-700 text-xs">
-                <button
-                  onClick={() => setActiveTab('annotated')}
-                  className={cn(
-                    "px-3 py-1 rounded-md transition-colors",
-                    activeTab === 'annotated' ? "bg-gold-500 text-navy-900 font-bold" : "text-slate-400 hover:text-slate-200"
-                  )}
-                >
-                  Annotated
-                </button>
-                <button
-                  onClick={() => setActiveTab('raw')}
-                  className={cn(
-                    "px-3 py-1 rounded-md transition-colors",
-                    activeTab === 'raw' ? "bg-gold-500 text-navy-900 font-bold" : "text-slate-400 hover:text-slate-200"
-                  )}
-                >
-                  Raw Shot
-                </button>
-              </div>
+            <div className="flex bg-navy-900 p-0.5 rounded-lg border border-navy-800 text-[11px]">
+              <button
+                onClick={() => setActiveTab('annotated')}
+                className={cn('px-2.5 py-1 rounded-md transition-colors font-medium', activeTab === 'annotated' ? 'bg-gold-500 text-navy-950 font-bold' : 'text-slate-400 hover:text-slate-200')}
+              >
+                Annotated
+              </button>
+              <button
+                onClick={() => setActiveTab('raw')}
+                className={cn('px-2.5 py-1 rounded-md transition-colors font-medium', activeTab === 'raw' ? 'bg-gold-500 text-navy-950 font-bold' : 'text-slate-400 hover:text-slate-200')}
+              >
+                Raw
+              </button>
+            </div>
+          </div>
+
+          <div className="w-full flex-1 flex items-center justify-center min-h-[300px] max-h-[450px] relative bg-navy-950/50 rounded-lg overflow-hidden border border-navy-900">
+            {activeTab === 'annotated' ? (
+              isDryRun && base64Annotated ? (
+                <img src={base64Annotated} alt="Annotated Target" className="w-full h-full object-contain" />
+              ) : (
+                <AuthenticatedImage src={annotatedImageSrc} alt="Annotated Target" className="w-full h-full object-contain" />
+              )
+            ) : (
+              <AuthenticatedImage src={rawImageSrc} alt="Raw Target" className="w-full h-full object-contain" />
             )}
           </div>
 
-          {/* Actual Image Component */}
-          <div className="w-full flex-1 flex items-center justify-center min-h-[300px]">
-            {isDryRun ? (
-              base64Annotated ? (
-                <img
-                  src={base64Annotated}
-                  className="w-full h-full max-h-[450px] object-contain rounded-lg border border-navy-850"
-                  alt="Dry Run Annotated Target"
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center text-slate-500 py-12">
-                  <ImageIcon className="w-12 h-12 text-slate-700 mb-2" />
-                  <p className="text-sm">No annotation preview available</p>
-                </div>
-              )
-            ) : activeTab === 'annotated' ? (
-              <AuthenticatedImage
-                src={annotatedImageSrc}
-                className="w-full h-full max-h-[450px] object-contain rounded-lg border border-navy-850"
-                alt="Annotated Archery Target"
-              />
-            ) : (
-              <AuthenticatedImage
-                src={rawImageSrc}
-                className="w-full h-full max-h-[450px] object-contain rounded-lg border border-navy-850"
-                alt="Raw Shot Target"
-              />
-            )}
-          </div>
-          <div className="w-full text-center mt-3">
-            <p className="text-xs text-slate-500 truncate">{filename}</p>
+          <div className="w-full flex items-center justify-between mt-3 text-[11px] text-slate-500">
+            <span className="truncate max-w-[200px]">{filename}</span>
+            <span>Target Image Preview</span>
           </div>
         </div>
 
-        {/* Right Side: Score & Metadata Details */}
-        <div className="w-full md:w-[360px] p-6 flex flex-col justify-between overflow-y-auto bg-navy-900/40">
+        {/* Right Side: Score Details & Actions */}
+        <div className="w-full md:w-80 p-6 flex flex-col justify-between bg-navy-900/60 overflow-y-auto">
           <div>
-            <div className="flex justify-between items-start mb-6">
-              <div>
-                <h3 className="font-bold text-lg text-slate-200 truncate">Result Metadata</h3>
-                <p className="text-xs text-slate-500 mt-0.5">Arrow CV Analytics Pipeline</p>
-              </div>
-              <button
-                onClick={onClose}
-                className="text-slate-450 hover:text-slate-200 p-1 hover:bg-navy-800 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-slate-100">Shot Analysis</h3>
+              <button onClick={onClose} className="text-slate-400 hover:text-slate-200 p-1 rounded-lg hover:bg-navy-800">
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Score info cards */}
-            <div className="space-y-4">
-              <div className="bg-navy-800/40 border border-navy-750 p-4 rounded-xl flex items-center justify-between">
-                <div>
-                  <span className="text-xs text-slate-500 block uppercase tracking-wider font-semibold">Detected Score</span>
-                  <span className="text-2xl font-black text-gold-400 mt-1 block">
-                    {points} <span className="text-sm font-medium text-slate-400">points</span>
-                  </span>
+            {/* Score Grid */}
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-navy-850/50 border border-navy-800/80 p-3 rounded-lg text-center">
+                  <span className="text-slate-500 text-[10px] uppercase font-bold tracking-wider block">Zone</span>
+                  <span className="text-gold-400 text-2xl font-black block mt-0.5">{zone ?? '-'}</span>
                 </div>
-                <div className="text-right">
-                  <span className="text-xs text-slate-500 block uppercase tracking-wider font-semibold">AI Confidence</span>
-                  <span className={cn("text-lg font-extrabold block mt-1", getConfidenceColor(confidence))}>
-                    {Math.round(confidence * 100)}%
-                  </span>
+                <div className="bg-navy-850/50 border border-navy-800/80 p-3 rounded-lg text-center">
+                  <span className="text-slate-500 text-[10px] uppercase font-bold tracking-wider block">Points</span>
+                  <span className="text-slate-100 text-2xl font-black block mt-0.5">{points ?? '-'}</span>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div className="bg-navy-850/50 border border-navy-800/80 p-3 rounded-lg">
-                  <span className="text-slate-500 text-[10px] uppercase font-bold tracking-wider block">Zone Ring</span>
-                  <span className="text-slate-200 text-sm font-bold block mt-1">Zone {zone}</span>
+                  <span className="text-slate-500 text-[10px] uppercase font-bold tracking-wider block">Confidence</span>
+                  <span className={cn('text-xs font-semibold block mt-1', getConfidenceColor(confidence))}>
+                    {(confidence * 100).toFixed(1)}%
+                  </span>
                 </div>
                 <div className="bg-navy-850/50 border border-navy-800/80 p-3 rounded-lg">
                   <span className="text-slate-500 text-[10px] uppercase font-bold tracking-wider block">CV Method</span>
@@ -223,15 +188,15 @@ export function ScoreDetailsModal({
               )}
             </div>
 
-            {/* Admin Override Section */}
+            {/* Admin / Scorer Override Section */}
             {!isDryRun && (
               <div className="mt-6 border-t border-navy-800 pt-6">
                 <h4 className="text-sm font-bold text-slate-200 flex items-center gap-2 mb-3">
                   <ShieldAlert className="w-4 h-4 text-rose-500 animate-pulse" />
-                  Admin Actions
+                  Score Override
                 </h4>
                 
-                {isAdmin ? (
+                {canOverride ? (
                   <form onSubmit={handleOverrideSubmit} className="space-y-4">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
@@ -281,7 +246,7 @@ export function ScoreDetailsModal({
                 ) : (
                   <div className="bg-navy-950/40 border border-navy-850 p-3 rounded-lg text-slate-500 text-xs flex gap-2">
                     <ShieldAlert className="w-4 h-4 text-slate-600 flex-shrink-0" />
-                    <p>Score overrides can only be performed by system Administrators. Scorer role has read-only access here.</p>
+                    <p>Score overrides can only be performed by Admin or Scorer accounts. Spectators have read-only access here.</p>
                   </div>
                 )}
               </div>
