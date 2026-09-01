@@ -193,8 +193,7 @@ export default function TournamentsPage() {
                     </button>
                   )}
                 </div>
-                </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {sessionsMap[t.id]?.map(s => (
                     <div key={s.id} className="bg-navy-800 border border-navy-700 rounded-lg p-4">
