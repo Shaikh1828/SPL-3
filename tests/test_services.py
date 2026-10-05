@@ -144,16 +144,23 @@ class TestScoringService:
         assert is_valid is True
         assert error_msg is None
 
+    def test_validate_score_above_10(self):
+        """Test score validation with score > 10 (overrides)."""
+        is_valid, error_msg = ScoringService.validate_score(15, 20)
+
+        assert is_valid is True
+        assert error_msg is None
+
     def test_validate_score_invalid_zone(self):
-        """Test score validation with invalid zone."""
-        is_valid, error_msg = ScoringService.validate_score(11, 5)
+        """Test score validation with negative zone."""
+        is_valid, error_msg = ScoringService.validate_score(-1, 5)
 
         assert is_valid is False
         assert "zone" in error_msg.lower()
 
     def test_validate_score_invalid_points(self):
-        """Test score validation with invalid points."""
-        is_valid, error_msg = ScoringService.validate_score(5, 11)
+        """Test score validation with negative points."""
+        is_valid, error_msg = ScoringService.validate_score(5, -1)
 
         assert is_valid is False
         assert "points" in error_msg.lower()

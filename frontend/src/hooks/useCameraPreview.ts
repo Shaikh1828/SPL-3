@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useAuthStore } from '@/store/authStore'
+import { getWebSocketUrl } from '@/utils/ws'
 
 export function useCameraPreview(
   cameraId: number | null,
@@ -17,7 +18,7 @@ export function useCameraPreview(
   useEffect(() => {
     if (!cameraId || !token) return
     const ws = new WebSocket(
-      `ws://localhost:8000/api/ws/camera/${cameraId}/preview?token=${token}`
+      getWebSocketUrl(`/api/ws/camera/${cameraId}/preview?token=${token}`)
     )
     ws.binaryType = 'blob'
     wsRef.current = ws

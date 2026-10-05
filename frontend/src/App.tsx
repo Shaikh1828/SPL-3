@@ -13,6 +13,9 @@ import CamerasPage from './pages/CamerasPage'
 import TournamentsPage from './pages/TournamentsPage'
 import UsersPage from './pages/UsersPage'
 import SettingsPage from './pages/SettingsPage'
+import SystemStatusPage from './pages/SystemStatusPage'
+
+import { CameraStreamProvider } from './context/CameraStreamContext'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -23,7 +26,8 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <BrowserRouter>
-      <Toaster 
+      <CameraStreamProvider>
+        <Toaster 
         position="top-right" 
         toastOptions={{
           style: {
@@ -49,9 +53,11 @@ export default function App() {
           <Route path="cameras" element={<CamerasPage />} />
           <Route path="tournaments" element={<TournamentsPage />} />
           <Route path="users" element={<UsersPage />} />
+          <Route path="system" element={<SystemStatusPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Routes>
+      </CameraStreamProvider>
     </BrowserRouter>
   )
 }

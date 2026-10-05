@@ -89,10 +89,12 @@ export interface SessionCreate {
 export interface SessionArcher {
   id: number
   session_id: number
+  archer_id?: number
   archer_name: string
   lane_number: number
+  current_round?: number
   total_score: number
-  registered_at: string
+  registered_at?: string
 }
 
 export interface SessionArcherCreate {
@@ -141,10 +143,18 @@ export interface LeaderboardEntry {
   archer_name: string
   lane_number: number
   total_score: number
+  current_round?: number
+  session_archer_id?: number
   round_1_score?: number
   round_2_score?: number
   round_3_score?: number
   arrows_recorded: number
+  tens_count?: number
+  xs_count?: number
+  average_score?: number
+  sessions_count?: number
+  session_name?: string
+  recent_arrows?: number[]
 }
 
 export interface Leaderboard {
@@ -165,11 +175,36 @@ export interface Camera {
   id: number
   name: string
   camera_type: CameraType
+  url?: string
   connection_url?: string
   status: CameraStatus
+  lane?: number
   last_heartbeat?: string
+  last_connected_at?: string
   created_at: string
-  updated_at: string
+  updated_at?: string
+}
+
+export interface CameraUpdate {
+  name?: string
+  camera_type?: CameraType
+  url?: string
+}
+
+export interface CameraTestResponse {
+  connected: boolean
+  source: string
+  message: string
+  resolution?: string
+  fps?: number
+}
+
+export interface CameraDiscoveryItem {
+  device_index: number
+  url: string
+  camera_type: string
+  name: string
+  resolution?: string
 }
 
 export interface CameraLaneAssignment {
@@ -220,3 +255,264 @@ export interface WSEvent {
   timestamp: string
   data: Record<string, unknown>
 }
+
+// ─── System Metrics & Recent Activity ──────────────────────────────────────────
+
+export interface SystemMetrics {
+  cpu: {
+    cores: number
+    load_1m: number
+    load_5m: number
+    load_15m: number
+    approx_utilization_percent: number
+  }
+  memory: {
+    total_mb: number
+    available_mb: number
+    used_mb: number
+    used_percent: number
+  }
+  storage: {
+    status: string
+    message: string
+    used_gb: number
+    quota_gb: number
+    usage_percent: number
+    disk_total_gb?: number
+    disk_used_gb?: number
+    disk_free_gb?: number
+  }
+  ai_engine: {
+    model_name: string
+    weights_path: string
+    weights_found: boolean
+    weights_size_mb: number
+    device: string
+    cuda_available: boolean
+    benchmark_map50: number
+    benchmark_recall: number
+    benchmark_precision: number
+    live_confidence_target: string
+  }
+  database: {
+    status: string
+    message: string
+    timestamp?: string
+  }
+  cache: {
+    status: string
+    message: string
+    timestamp?: string
+  }
+  threadpool: {
+    status: string
+    message: string
+    active_workers: number
+    max_workers: number
+    utilization_percent: number
+  }
+  runtime: {
+    python_version: string
+    platform: string
+    environment: string
+    timestamp: string
+  }
+}
+
+export interface RecentScoreItem {
+  id: number
+  session_id: number
+  session_archer_id: number
+  archer_name: string
+  lane_number: number
+  round: number
+  arrow_number: number
+  points: number
+  zone: number
+  is_x: boolean
+  confidence: number
+  timestamp?: string | null
+}
+
+// ─── AI Round Scoring & Review ────────────────────────────────────────────────
+
+export interface DetectedArrow {
+  arrow_num: number
+  points: number
+  zone: string
+  confidence: number
+  is_x?: boolean
+  tip_x?: number
+  tip_y?: number
+  is_override?: boolean
+  override_reason?: string
+}
+
+export interface LaneDetectionResult {
+  lane_number: number
+  session_archer_id: number
+  archer_name: string
+  camera_id?: number | null
+  camera_name?: string
+  camera_status?: string
+  status: 'detected' | 'warning' | 'unassigned' | 'overridden'
+  detected_arrows: DetectedArrow[]
+  end_total: number
+  avg_confidence: number
+  method: string
+  annotated_image?: string | null
+}
+
+export interface AIScoreRoundResponse {
+  session_id: number
+  round: number
+  arrows_per_round: number
+  lanes: LaneDetectionResult[]
+}
+
+export interface LaneSubmission {
+  session_archer_id: number
+  lane_number: number
+  arrows: DetectedArrow[]
+}
+
+export interface BatchConfirmRoundRequest {
+  round: number
+  lane_submissions: LaneSubmission[]
+}
+
+export interface BatchConfirmRoundResponse {
+  session_id: number
+  round: number
+  scores_recorded_count: number
+  next_round: number
+  updated_archers: SessionArcher[]
+}
+
+// ─── Analytics & Longitudinal Reports ───────────────────────────────────────────
+
+export interface ZoneCount {
+  zone: string
+  count: number
+  percentage: number
+}
+
+export interface EndProgressionItem {
+  end: number
+  avg_score: number
+  total_arrows: number
+}
+
+export interface LaneAccuracyItem {
+  lane: number
+  avg_score: number
+  arrows_shot: number
+  tens_rate: number
+}
+
+export interface AIMetrics {
+  total_arrows: number
+  ai_validated_percent: number
+  avg_confidence: number
+  overridden_count: number
+}
+
+export interface TournamentAnalyticsResponse {
+  tournament_id?: number | null
+  tournament_name?: string | null
+  session_id?: number | null
+  session_name?: string | null
+  total_archers: number
+  total_arrows_shot: number
+  total_points_scored: number
+  overall_average_arrow: number
+  score_distribution: ZoneCount[]
+  end_progression: EndProgressionItem[]
+  lane_accuracy: LaneAccuracyItem[]
+  ai_metrics: AIMetrics
+}
+
+export interface ArcherTournamentHistory {
+  tournament_id: number
+  tournament_name: string
+  location?: string | null
+  sessions_count: number
+  arrows_shot: number
+  total_points: number
+  average_arrow: number
+  rank: number
+  tens_count: number
+  xs_count: number
+  best_end_score: number
+}
+
+export interface ArcherLongitudinalAnalyticsResponse {
+  archer_id: number
+  archer_name: string
+  tournaments_participated: number
+  total_career_points: number
+  overall_arrow_average: number
+  total_tens: number
+  total_xs: number
+  career_high_end: number
+  consistency_index: number
+  tournaments: ArcherTournamentHistory[]
+  score_distribution: ZoneCount[]
+  end_progression: EndProgressionItem[]
+}
+
+export interface ArcherDirectoryItem {
+  archer_id: number
+  archer_name: string
+  tournaments_count: number
+  total_score: number
+  average_arrow: number
+}
+
+// ─── Target Image Gallery ───────────────────────────────────────────────────
+
+export interface ScoreGalleryItem {
+  id: number
+  score_id: number
+  session_id: number
+  session_name?: string | null
+  tournament_id?: number | null
+  tournament_name?: string | null
+  session_archer_id?: number
+  archer_id?: number | null
+  archer_name: string
+  lane_number: number
+  round: number
+  arrow_num: number
+  zone: number
+  points: number
+  is_x: boolean
+  confidence?: number | null
+  method?: string | null
+  image_id?: string | null
+  image_url: string
+  annotated_image_url: string
+  created_at: string
+}
+
+export interface ScoreGalleryResponse {
+  items: ScoreGalleryItem[]
+  total: number
+  skip: number
+  limit: number
+}
+
+export interface ScoreGalleryFilterParams {
+  tournament_id?: number
+  session_id?: number
+  archer_id?: number
+  archer_name?: string
+  round?: number
+  min_points?: number
+  max_points?: number
+  sort_by?: 'latest' | 'oldest' | 'points_desc' | 'points_asc' | 'confidence_desc' | 'confidence_asc' | 'round_asc' | 'round_desc'
+  skip?: number
+  limit?: number
+}
+
+

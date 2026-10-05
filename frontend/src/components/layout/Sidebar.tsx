@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, Target, BarChart3, Camera, Users,
   Trophy, Settings, ChevronLeft, ChevronRight, Crosshair, FolderOpen,
+  Activity
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -14,6 +15,7 @@ const navItems = [
   { to: '/cameras', icon: Camera, label: 'Cameras' },
   { to: '/tournaments', icon: Trophy, label: 'Tournaments' },
   { to: '/users', icon: Users, label: 'Users' },
+  { to: '/system', icon: Activity, label: 'System Status' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ]
 

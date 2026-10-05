@@ -17,6 +17,7 @@ from src.security import get_user_id_from_token
 from src.models.user import User
 
 security = HTTPBearer()
+optional_security = HTTPBearer(auto_error=False)
 
 
 def get_current_user(
@@ -61,7 +62,7 @@ def get_current_user(
 
 
 def get_optional_user(
-    db: Session = Depends(get_db), credentials = Depends(security)
+    db: Session = Depends(get_db), credentials = Depends(optional_security)
 ) -> Optional[User]:
     """
     Get current user if authenticated, otherwise None.
@@ -73,7 +74,7 @@ def get_optional_user(
     Returns:
         User object if authenticated, None otherwise
     """
-    if not credentials:
+    if not credentials or not hasattr(credentials, "credentials"):
         return None
 
     token = credentials.credentials

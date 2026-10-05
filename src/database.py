@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import QueuePool
 
 from src.config import settings
+from src.models.base import Base
 
 # Database engine configuration (Pattern #14: Connection Pool Tuning)
 engine = create_engine(

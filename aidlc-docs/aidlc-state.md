@@ -10,8 +10,8 @@
 ## Phase Execution Status
 
 ### INCEPTION PHASE
-- [x] **Workspace Detection** — Greenfield project detected
-- [x] **Reverse Engineering** — SKIPPED (greenfield)
+- [x] **Workspace Detection** — Brownfield complete codebase detected
+- [x] **Reverse Engineering** — COMPLETE (Full codebase reverse-engineered: 10 structured artifacts generated under `aidlc-docs/inception/reverse-engineering/`)
 - [x] **Requirements Analysis** — COMPLETE (comprehensive depth)
 - [x] **User Stories** — COMPLETE (4 personas, 21 stories, approved)
 - [x] **Workflow Planning** — COMPLETE (execution plan created)
@@ -29,12 +29,14 @@
   - [x] Phase 1: Project Structure & Config (5 steps) ✅
   - [x] Phase 2: Database Layer (3 steps) ✅
   - [x] Phase 3: Business Logic Services (7 steps) ✅
-  - [x] Phase 4: API Routes (9 steps) ✅ - 25 REST + 1 WebSocket
+  - [x] Phase 4: API Routes (9 steps) ✅ - 27 REST + 1 WebSocket
   - [x] Phase 5: Middleware & Utilities (6 steps) ✅
   - [x] Phase 6: Testing & Validation (4 steps) ✅ - 46+ tests
   - [x] Phase 7: Deployment & Documentation (6 steps) ✅ - Docker, Alembic, docs
-- [ ] **Frontend Unit - Code Generation** — PENDING (awaiting Backend completion)
-- [ ] **Build and Test** — PENDING (awaiting code generation completion)
+- [x] **Frontend Unit - Containerization & Reverse Engineering** — COMPLETE (Multi-stage Dockerfile, Nginx SPA/proxy, reverse-engineering specs)
+- [x] **Frontend Unit - Dashboard Redesign & System Diagnostics** — COMPLETE (Interactive Modals for Tournaments, Active Sessions, Archers; Dedicated `/system` CPU/RAM/Storage/GPU-AI page; Real-time score stream)
+- [x] **Frontend Unit - Scoring Page Overhaul & Multi-Mode Matrix** — COMPLETE (Multi-Tournament/Session Switcher, Rapid Touch Keypad, Live Multi-Camera Vision, Scorecard Matrix, Undo capability)
+- [x] **Build and Test Verification** — COMPLETE (59/59 pytest tests passing, Docker E2E & Browser UI verified)
 
 ### OPERATIONS PHASE
 - [ ] **Operations** — Placeholder (future)
@@ -176,12 +178,28 @@ See `inception/requirements/extension-notes.md` for detailed compliance plan.
 
 ---
 
-## Post-Construction Enhancement (2026-06-20)
+## Post-Construction Enhancement (2026-10-03)
 
-### Phase: Target/Ring Detection & Arrow Count Accuracy Fix
+### Phase: Analytics & Reports Overhaul with Cross-Tournament Longitudinal Tracking
 
-**Status**: ✅ COMPLETE — see `aidlc-docs/audit.md` "Post-Construction Enhancement — Target/Ring Detection & Arrow Count Accuracy (2026-06-20)" for full root-cause analysis.
+**Status**: ✅ COMPLETE — see `aidlc-docs/audit.md` for full deliverables and verification.
 
-**Summary**: `_target_by_dark_ring_boundary` (the highest-priority target method) was bleeding into the wooden target stand and mis-scaling the outer radius by ~30%, corrupting zone scoring for most detections. Re-prioritized `zone_ellipses` (ratio-correct) as primary, hardened it against arrow-occlusion-fragmented rings, demoted/fixed `dark_ring_boundary`, and tightened the noisy SIFT arrow method. Verified via a new diagnostic harness (`tests/scratch_diagnose_current.py`) against all 20 real photos in `tests/TestImages` plus the full `pytest` suite (57/57 passing). Known remaining limits: tightly clustered/touching arrow groups and severely off-axis camera angles.
+**Summary**:
+1. **Dynamic Selector Ribbon**: Full tournament and session selector ribbon replacing single-session locks, with WebSocket real-time live synchronization (`SCORE_RECORDED`, `SCORE_VALIDATED`, `SESSION_STATE_CHANGED`, `LEADERBOARD_UPDATED`).
+2. **Advanced Statistical Analytics**:
+   - `GET /api/reports/analytics`: Computes Olympic ring hit distributions (X, 10, 9...M), fatigue/end pacing progression curves, lane-by-lane accuracy & variance comparison, and computer vision validation telemetry.
+3. **Cross-Tournament Archer Longitudinal Tracking**:
+   - `GET /api/reports/archers/directory`: Summarizes multi-tournament participation.
+   - `GET /api/reports/archers/{archer_id}/analytics`: Longitudinal career average, best end score, stability index (standard deviation), multi-tournament timeline table with location, matches shot, points, and final tournament podium rank medals (🥇 1st, 🥈 2nd, 🥉 3rd).
+4. **Tournament & Session Multi-Format Reports**:
+   - `POST /api/tournaments/{tournament_id}/reports` and `POST /api/sessions/{session_id}/reports` delivering styled **PDF** (via ReportLab), **CSV**, and **JSON** exports.
+5. **Modernized High-Density 4-Tab Suite (`ReportsPage.tsx`)**:
+   - 📊 **Tournament & Match Analytics**
+   - 🎯 **Archer Career & Comparison**
+   - 📋 **Official Leaderboard**
+   - 🖼️ **Target Gallery**
+6. **Automated Testing & Full Suite Verification**:
+   - Created `tests/test_analytics_and_reports.py`.
+   - Full test suite passing: **67/67 tests (100%)**.
+   - Production frontend build & container recreation verified via browser E2E test.
 
----

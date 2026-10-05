@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useWebSocket } from './useWebSocket'
+import { getWebSocketUrl } from '@/utils/ws'
 import type { WSEvent } from '@/types'
 
 export function useScoreStream(sessionId: number | null) {
@@ -17,7 +18,7 @@ export function useScoreStream(sessionId: number | null) {
   }, [])
 
   useWebSocket({
-    url: sessionId ? `ws://localhost:8000/api/ws/${sessionId}` : '',
+    url: sessionId ? getWebSocketUrl(`/api/ws/${sessionId}`) : '',
     onMessage: handleMessage,
     enabled: !!sessionId,
   })

@@ -3,7 +3,7 @@ Pydantic request/response schemas for API endpoints.
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, Field, EmailStr, validator
 
 
@@ -144,8 +144,8 @@ class ScoreCreate(BaseModel):
     session_archer_id: int
     round: int = Field(..., ge=1)
     arrow_num: int = Field(..., ge=1)
-    zone: int = Field(..., ge=0, le=10)
-    points: int = Field(..., ge=0, le=10)
+    zone: int = Field(..., ge=0)
+    points: int = Field(..., ge=0)
     image_id: Optional[str] = None
 
 
@@ -180,8 +180,8 @@ class ScoreValidateRequest(BaseModel):
 class ScoreOverrideRequest(BaseModel):
     """Score override request by admin."""
 
-    zone: int = Field(..., ge=0, le=10)
-    points: int = Field(..., ge=0, le=10)
+    zone: int = Field(..., ge=0)
+    points: int = Field(..., ge=0)
     reason: Optional[str] = Field(None, max_length=500)
 
 
@@ -194,9 +194,33 @@ class LeaderboardItem(BaseModel):
     archer_name: str
     total_score: int
     current_round: int
-    session_archer_id: int
+    session_archer_id: Optional[int] = None
     lane_number: Optional[int] = None
     arrows_recorded: int = 0
+    tens_count: int = 0
+    xs_count: int = 0
+    average_score: float = 0.0
+    session_name: Optional[str] = None
+    recent_arrows: List[int] = []
+
+
+class TournamentLeaderboardItem(BaseModel):
+    """Tournament leaderboard item."""
+
+    rank: int
+    archer_id: int
+    archer_name: str
+    total_score: int
+    current_round: int
+    session_archer_id: Optional[int] = None
+    lane_number: Optional[int] = None
+    arrows_recorded: int = 0
+    tens_count: int = 0
+    xs_count: int = 0
+    average_score: float = 0.0
+    sessions_count: int = 1
+    session_name: Optional[str] = None
+    recent_arrows: List[int] = []
 
 
 
@@ -209,6 +233,15 @@ class CameraCreate(BaseModel):
     url: str = Field(..., min_length=1, max_length=500)
 
 
+class CameraUpdate(BaseModel):
+    """Update camera details."""
+
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    camera_type: Optional[str] = Field(None, pattern="^(USB|RTSP|HTTP)$")
+    url: Optional[str] = Field(None, min_length=1, max_length=500)
+    lane: Optional[int] = Field(None, ge=1)
+
+
 class CameraResponse(BaseModel):
     """Camera response."""
 
@@ -217,8 +250,9 @@ class CameraResponse(BaseModel):
     camera_type: str
     url: str
     status: str
-    last_connected_at: Optional[datetime]
-    created_at: Optional[datetime]
+    lane: Optional[int] = None
+    last_connected_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -229,6 +263,33 @@ class CameraAssignRequest(BaseModel):
 
     camera_id: int
     lane: int = Field(..., ge=1)
+
+
+class CameraTestRequest(BaseModel):
+    """Camera stream testing request."""
+
+    url: str
+    camera_type: str = "RTSP"
+
+
+class CameraTestResponse(BaseModel):
+    """Camera stream testing response."""
+
+    connected: bool
+    source: str
+    message: str
+    resolution: Optional[str] = None
+    fps: Optional[float] = None
+
+
+class CameraDiscoveryItem(BaseModel):
+    """Auto-discovered camera device item."""
+
+    device_index: int
+    url: str
+    camera_type: str
+    name: str
+    resolution: Optional[str] = None
 
 
 class CameraAssignmentResponse(BaseModel):
@@ -269,6 +330,192 @@ class ReportGenerateRequest(BaseModel):
     format: str = Field(..., pattern="^(pdf|csv|json)$")
 
 
+# Batch AI Round Scoring & Review Schemas
+class DetectedArrow(BaseModel):
+    """Detected arrow model in AI round scoring."""
+    arrow_num: int
+    points: int = Field(..., ge=0, le=10)
+    zone: str = Field(..., max_length=10)
+    confidence: float = Field(default=0.95, ge=0.0, le=1.0)
+    is_x: bool = False
+    tip_x: Optional[float] = None
+    tip_y: Optional[float] = None
+    is_override: bool = False
+    override_reason: Optional[str] = None
+
+
+class LaneDetectionResult(BaseModel):
+    """Detection result for a single shooting lane in a round."""
+    lane_number: int
+    session_archer_id: int
+    archer_name: str
+    camera_id: Optional[int] = None
+    camera_name: Optional[str] = None
+    camera_status: str = "connected"
+    status: str = "detected"
+    detected_arrows: List[DetectedArrow] = []
+    end_total: int = 0
+    avg_confidence: float = 0.95
+    method: str = "yolo11_consensus"
+    annotated_image: Optional[str] = None
+
+
+class AIScoreRoundRequest(BaseModel):
+    """Request to score all lanes in a round via AI."""
+    round: int = Field(default=1, ge=1)
+    simulated: bool = False
+
+
+class AIScoreRoundResponse(BaseModel):
+    """Response containing AI detections across all active lanes."""
+    session_id: int
+    round: int
+    arrows_per_round: int
+    lanes: List[LaneDetectionResult]
+
+
+class LaneSubmission(BaseModel):
+    """Scorer-reviewed arrow submissions for a single lane."""
+    session_archer_id: int
+    lane_number: int
+    arrows: List[DetectedArrow]
+
+
+class BatchConfirmRoundRequest(BaseModel):
+    """Request to confirm and commit all lane scores for a round."""
+    round: int = Field(..., ge=1)
+    lane_submissions: List[LaneSubmission]
+
+
+class BatchConfirmRoundResponse(BaseModel):
+    """Response after confirming and submitting round scores."""
+    session_id: int
+    round: int
+    scores_recorded_count: int
+    next_round: int
+    updated_archers: List[SessionArcherResponse]
+
+
+# Analytics Schemas
+class ZoneCount(BaseModel):
+    """Zone count and percentage breakdown."""
+    zone: str
+    count: int
+    percentage: float
+
+
+class EndProgressionItem(BaseModel):
+    """Average score progression per end."""
+    end: int
+    avg_score: float
+    total_arrows: int
+
+
+class LaneAccuracyItem(BaseModel):
+    """Shooting accuracy per lane."""
+    lane: int
+    avg_score: float
+    arrows_shot: int
+    tens_rate: float
+
+
+class AIMetrics(BaseModel):
+    """Computer vision and validation telemetry."""
+    total_arrows: int
+    ai_validated_percent: float
+    avg_confidence: float
+    overridden_count: int
+
+
+class TournamentAnalyticsResponse(BaseModel):
+    """Comprehensive tournament / session analytics."""
+    tournament_id: Optional[int] = None
+    tournament_name: Optional[str] = None
+    session_id: Optional[int] = None
+    session_name: Optional[str] = None
+    total_archers: int
+    total_arrows_shot: int
+    total_points_scored: int
+    overall_average_arrow: float
+    score_distribution: List[ZoneCount]
+    end_progression: List[EndProgressionItem]
+    lane_accuracy: List[LaneAccuracyItem]
+    ai_metrics: AIMetrics
+
+
+class ArcherTournamentHistory(BaseModel):
+    """Single tournament record in an archer's longitudinal history."""
+    tournament_id: int
+    tournament_name: str
+    location: Optional[str] = None
+    sessions_count: int
+    arrows_shot: int
+    total_points: int
+    average_arrow: float
+    rank: int
+    tens_count: int
+    xs_count: int
+    best_end_score: int
+
+
+class ArcherLongitudinalAnalyticsResponse(BaseModel):
+    """Longitudinal performance analytics for an archer across tournaments."""
+    archer_id: int
+    archer_name: str
+    tournaments_participated: int
+    total_career_points: int
+    overall_arrow_average: float
+    total_tens: int
+    total_xs: int
+    career_high_end: int
+    consistency_index: float
+    tournaments: List[ArcherTournamentHistory]
+    score_distribution: List[ZoneCount]
+    end_progression: List[EndProgressionItem]
+
+
+class ArcherDirectoryItem(BaseModel):
+    """Directory summary item for archer selection."""
+    archer_id: int
+    archer_name: str
+    tournaments_count: int
+    total_score: int
+    average_arrow: float
+
+
+class ScoreGalleryItem(BaseModel):
+    """Single item in target image gallery."""
+    id: int
+    score_id: int
+    session_id: int
+    session_name: Optional[str] = None
+    tournament_id: Optional[int] = None
+    tournament_name: Optional[str] = None
+    session_archer_id: int
+    archer_id: Optional[int] = None
+    archer_name: str
+    lane_number: Optional[int] = 1
+    round: int
+    arrow_num: int
+    zone: int
+    points: int
+    is_x: bool = False
+    confidence: float = 0.95
+    method: Optional[str] = None
+    image_id: Optional[str] = None
+    image_url: Optional[str] = None
+    annotated_image_url: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class ScoreGalleryResponse(BaseModel):
+    """Paginated target image gallery response."""
+    items: List[ScoreGalleryItem]
+    total: int
+    skip: int
+    limit: int
+
+
 # Error Response
 class ErrorResponse(BaseModel):
     """Error response."""
@@ -276,3 +523,6 @@ class ErrorResponse(BaseModel):
     error: str
     status: int
     timestamp: Optional[datetime]
+
+
+

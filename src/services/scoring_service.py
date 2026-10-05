@@ -48,25 +48,17 @@ class ScoringService:
         Validate zone and points values.
 
         Args:
-            zone: Zone number (0-10)
-            points: Points awarded (0-10)
+            zone: Zone number (>= 0)
+            points: Points awarded (>= 0)
 
         Returns:
             Tuple of (is_valid, error_message)
         """
-        if zone < 0 or zone > 10:
-            return False, f"Zone must be 0-10, got {zone}"
+        if zone < 0:
+            return False, f"Zone cannot be negative, got {zone}"
 
-        if points < 0 or points > 10:
-            return False, f"Points must be 0-10, got {points}"
-
-        # Validate zone-to-points mapping
-        if zone not in ZONE_POINTS_MAPPING:
-            return False, f"Invalid zone: {zone}"
-
-        # Optional: Enforce strict mapping (zone must match points)
-        # if ZONE_POINTS_MAPPING[zone] != points:
-        #     return False, f"Zone {zone} should have {ZONE_POINTS_MAPPING[zone]} points, got {points}"
+        if points < 0:
+            return False, f"Points cannot be negative, got {points}"
 
         return True, None
 

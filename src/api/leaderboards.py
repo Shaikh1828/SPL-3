@@ -13,13 +13,50 @@ from sqlalchemy.orm import Session as SQLSession
 import structlog
 
 from src.database import get_db
-from src.schemas import LeaderboardItem
-from src.models.tournament import Session
+from src.schemas import LeaderboardItem, TournamentLeaderboardItem
+from src.models.tournament import Session, Tournament
 from src.services.leaderboard_service import LeaderboardService
 
 logger = structlog.get_logger()
 
 router = APIRouter(tags=["leaderboards"])
+
+
+@router.get("/tournaments/{tournament_id}/leaderboard", response_model=List[TournamentLeaderboardItem])
+async def get_tournament_leaderboard(
+    tournament_id: int,
+    db: SQLSession = Depends(get_db),
+    limit: int = Query(100, ge=1, le=1000),
+):
+    """
+    Get consolidated tournament-wide leaderboard aggregating archers across all sessions.
+
+    Args:
+        tournament_id: Tournament ID
+        db: Database session
+        limit: Maximum records to return
+
+    Returns:
+        List of tournament leaderboard items sorted by total_score DESC
+    """
+    try:
+        tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
+        if not tournament:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tournament not found",
+            )
+
+        leaderboard = LeaderboardService.get_tournament_leaderboard(db, tournament_id, limit=limit)
+        return leaderboard
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("get_tournament_leaderboard_error", tournament_id=tournament_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve tournament leaderboard",
+        )
 
 
 @router.get("/sessions/{session_id}/leaderboard", response_model=List[LeaderboardItem])

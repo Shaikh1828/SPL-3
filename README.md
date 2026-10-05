@@ -64,13 +64,26 @@ python scripts/train_yolo.py 30
 python scripts/evaluate_yolo.py
 ```
 
-### 2. Start Docker Containers
+### 2. Start Full-Stack Docker Containers
 ```powershell
 docker compose up -d --build
 docker ps
 ```
 
+Once running, the entire application stack is live:
+- 🌐 **Frontend Web App**: [http://localhost:3000](http://localhost:3000) (alias: [http://localhost:5173](http://localhost:5173))
+- ⚡ **Backend API**: [http://localhost:8000](http://localhost:8000)
+- 📚 **Interactive Swagger API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- 🏥 **Health Check Endpoint**: [http://localhost:3000/api/health](http://localhost:3000/api/health)
+
+#### Default Demo Accounts
+| Role | Username | Password |
+|---|---|---|
+| **Admin** | `admin` | `admin123!` |
+| **Scorer** | `scorer` | `scorer123!` |
+| **Spectator** | `spectator1` | `Spectator123!` |
+
 ### 3. Check System Health
 ```powershell
-python -c "import requests; r = requests.get('http://localhost:8000/api/health'); print(r.status_code, r.json())"
+python scripts/test_docker_stack.py
 ```

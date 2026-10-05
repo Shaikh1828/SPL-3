@@ -95,5 +95,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
 # Expose port
 EXPOSE 8000
 
-# Run API 
-CMD ["/bin/sh", "-c", "/app/.venv/bin/python -m uvicorn src.main:app --host 0.0.0.0 --port 8000"]
+# Run DB initialization and then start API 
+CMD ["/bin/sh", "-c", "/app/.venv/bin/python setup_db.py && /app/.venv/bin/python -m uvicorn src.main:app --host 0.0.0.0 --port 8000"]

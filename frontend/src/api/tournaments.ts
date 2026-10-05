@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import type { Tournament, TournamentCreate, PaginatedResponse } from '@/types'
+import type { Tournament, TournamentCreate, PaginatedResponse, LeaderboardEntry } from '@/types'
 
 export const tournamentsApi = {
   list: (params?: { skip?: number; limit?: number; search?: string }) =>
@@ -10,4 +10,7 @@ export const tournamentsApi = {
 
   create: (data: TournamentCreate) =>
     apiClient.post<Tournament>('/tournaments', data).then((r) => r.data),
+
+  getLeaderboard: (id: number) =>
+    apiClient.get<LeaderboardEntry[]>(`/tournaments/${id}/leaderboard`).then((r) => r.data),
 }

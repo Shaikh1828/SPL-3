@@ -204,7 +204,6 @@ export function ScoreDetailsModal({
                         <input
                           type="number"
                           min="0"
-                          max="10"
                           required
                           value={overrideZone}
                           onChange={(e) => setOverrideZone(parseInt(e.target.value) || 0)}
@@ -216,7 +215,6 @@ export function ScoreDetailsModal({
                         <input
                           type="number"
                           min="0"
-                          max="10"
                           required
                           value={overridePoints}
                           onChange={(e) => setOverridePoints(parseInt(e.target.value) || 0)}

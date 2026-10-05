@@ -25,7 +25,8 @@ export function useWebSocket({
   const connect = useCallback(() => {
     if (!enabled || !token) return
 
-    const wsUrl = `${url}?token=${token}`
+    const separator = url.includes('?') ? '&' : '?'
+    const wsUrl = `${url}${separator}token=${token}`
     const ws = new WebSocket(wsUrl)
     ws.binaryType = 'blob'
     wsRef.current = ws

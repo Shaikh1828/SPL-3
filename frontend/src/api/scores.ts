@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import type { Score, ScoreCreate, ScoreValidate, PaginatedResponse } from '@/types'
+import type { Score, ScoreCreate, ScoreValidate } from '@/types'
 
 export const scoresApi = {
   record: (sessionId: number, data: ScoreCreate) =>
@@ -21,7 +21,7 @@ export const scoresApi = {
 
   list: (sessionId: number, params?: { round_number?: number; skip?: number; limit?: number }) =>
     apiClient
-      .get<PaginatedResponse<Score>>(`/sessions/${sessionId}/scores`, { params })
+      .get<Score[]>(`/sessions/${sessionId}/scores`, { params })
       .then((r) => r.data),
 
   get: (scoreId: number) =>
@@ -36,4 +36,31 @@ export const scoresApi = {
 
   override: (scoreId: number, data: { zone: number; points: number; reason?: string }) =>
     apiClient.put<Score>(`/scores/${scoreId}/override`, data).then((r) => r.data),
+
+  delete: (scoreId: number) =>
+    apiClient.delete<{ message: string; score_id: number }>(`/scores/${scoreId}`).then((r) => r.data),
+
+  recent: (limit: number = 15) =>
+    apiClient.get<import('@/types').RecentScoreItem[]>('/scores/recent', { params: { limit } }).then((r) => r.data),
+
+  aiScoreRound: (sessionId: number, data: { round: number; simulated?: boolean }) =>
+    apiClient
+      .post<import('@/types').AIScoreRoundResponse>(`/sessions/${sessionId}/ai-score-round`, data)
+      .then((r) => r.data),
+
+  batchConfirmRound: (sessionId: number, data: import('@/types').BatchConfirmRoundRequest) =>
+    apiClient
+      .post<import('@/types').BatchConfirmRoundResponse>(`/sessions/${sessionId}/scores/batch-confirm-round`, data)
+      .then((r) => r.data),
+
+  gallery: (params?: import('@/types').ScoreGalleryFilterParams) =>
+    apiClient
+      .get<import('@/types').ScoreGalleryResponse>('/scores/gallery', { params })
+      .then((r) => r.data),
+
+  captureLaneScore: (sessionId: number, laneNumber: number, round: number = 1) =>
+    apiClient
+      .post<Score>(`/sessions/${sessionId}/lanes/${laneNumber}/capture-score`, null, { params: { round } })
+      .then((r) => r.data),
 }
+

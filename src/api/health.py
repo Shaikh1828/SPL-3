@@ -90,3 +90,22 @@ async def detailed_health_check(db: SQLSession = Depends(get_db)):
             "error": str(e),
             "components": {},
         }
+
+
+@router.get("/health/system")
+async def system_metrics():
+    """
+    Get detailed real-time hardware, runtime, and subsystem metrics.
+    Includes CPU load, RAM usage, storage volume quotas, YOLO11 AI engine status,
+    Database pool state, and Redis cache.
+    """
+    try:
+        return HealthService.get_system_metrics()
+    except Exception as e:
+        logger.exception("system_metrics_error", error=str(e))
+        return {
+            "status": "error",
+            "message": "Failed to collect system metrics",
+            "error": str(e),
+        }
+

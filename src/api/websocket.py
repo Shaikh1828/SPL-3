@@ -112,6 +112,12 @@ async def camera_preview_endpoint(
                 except Exception as e:
                     logger.debug("camera_read_error", camera_id=camera_id, error=str(e))
 
+            # Check in-memory pushed frame from client/OBS streamer
+            if frame_bytes is None:
+                pushed = CameraService.get_recent_pushed_frame(camera_id, max_age_seconds=15.0)
+                if pushed:
+                    frame_bytes = pushed
+
             # Fallback to mock frame if no frame_bytes could be captured
             if frame_bytes is None:
                 if OPENCV_AVAILABLE and cv2 is not None and np is not None:
