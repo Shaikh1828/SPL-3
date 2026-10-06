@@ -515,4 +515,94 @@ export interface ScoreGalleryFilterParams {
   limit?: number
 }
 
+// ─── Archer Pose & Biomechanics Types ────────────────────────────────────────
 
+export interface PoseLandmark {
+  id: number
+  x: number
+  y: number
+  z: number
+  visibility: number
+}
+
+export interface ShotPhaseInfo {
+  phase: 'stance' | 'draw' | 'anchor' | 'release'
+  name: string
+  start_frame: number
+  end_frame: number
+  start_time: number
+  end_time: number
+}
+
+export interface CoachingDiagnostic {
+  metric: string
+  status: 'EXCELLENT' | 'GOOD' | 'NEEDS_WORK' | 'POOR'
+  value: string
+  target: string
+  message: string
+}
+
+export interface BiomechanicsScorePrediction {
+  predicted_score: number
+  score_display: string
+  exact_score: number
+  is_x_ring: boolean
+  score_category: 'Gold' | 'Red' | 'Blue' | 'Black' | 'White'
+  category_color: string
+  zone_description: string
+  form_score_pct: number
+  confidence: number
+  metrics_evaluated: {
+    bow_arm_angle: number
+    draw_elbow_angle: number
+    anchor_jitter_px: number
+    bow_arm_deflection_deg: number
+    anchor_duration_sec: number
+  }
+  diagnostics: CoachingDiagnostic[]
+}
+
+export interface PoseFrameData {
+  frame: number
+  time: number
+  phase: 'stance' | 'draw' | 'anchor' | 'release'
+  landmarks: PoseLandmark[]
+}
+
+export interface PoseAnalysisResponse {
+  success: boolean
+  video_id: string
+  title: string
+  stream_url?: string
+  duration_sec: number
+  fps: number
+  total_frames: number
+  resolution: { width: number; height: number }
+  phases: ShotPhaseInfo[]
+  biomechanics_summary: {
+    avg_bow_arm_angle: number
+    avg_draw_elbow_angle: number
+    anchor_hold_duration_sec: number
+    anchor_jitter_px: number
+    bow_arm_deflection_deg: number
+    release_frame: number
+  }
+  prediction: BiomechanicsScorePrediction
+  coaching_notes: string[]
+  frames_landmarks: PoseFrameData[]
+}
+
+export interface SampleVideoItem {
+  id: string
+  title: string
+  filename: string
+  expected_score: number
+  score_display: string
+  category: string
+  form_score_pct: number
+  description: string
+  badge: string
+  is_available: boolean
+  file_size_bytes: number
+  stream_url: string
+}

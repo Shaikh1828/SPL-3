@@ -14,6 +14,7 @@ import TournamentsPage from './pages/TournamentsPage'
 import UsersPage from './pages/UsersPage'
 import SettingsPage from './pages/SettingsPage'
 import SystemStatusPage from './pages/SystemStatusPage'
+import PoseAnalysisPage from './pages/PoseAnalysisPage'
 
 import { CameraStreamProvider } from './context/CameraStreamContext'
 
@@ -53,6 +54,7 @@ export default function App() {
           <Route path="cameras" element={<CamerasPage />} />
           <Route path="tournaments" element={<TournamentsPage />} />
           <Route path="users" element={<UsersPage />} />
+          <Route path="pose-analysis" element={<PoseAnalysisPage />} />
           <Route path="system" element={<SystemStatusPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>

@@ -11,6 +11,7 @@ const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/scoring', icon: Target, label: 'Scoring' },
   { to: '/batch-testing', icon: FolderOpen, label: 'Batch Scorer' },
+  { to: '/pose-analysis', icon: Crosshair, label: 'Pose Biomechanics' },
   { to: '/reports', icon: BarChart3, label: 'Reports' },
   { to: '/cameras', icon: Camera, label: 'Cameras' },
   { to: '/tournaments', icon: Trophy, label: 'Tournaments' },

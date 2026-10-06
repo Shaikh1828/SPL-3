@@ -36,6 +36,7 @@ from src.api import (
     report_router,
     health_router,
     user_router,
+    pose_router,
 )
 from src.api.websocket import router as websocket_router
 from src.middleware import RateLimitMiddleware, ErrorHandlingMiddleware
@@ -174,6 +175,7 @@ app.include_router(leaderboard_router, prefix="/api", tags=["leaderboards"])
 app.include_router(report_router, prefix="/api", tags=["reports"])
 app.include_router(health_router, prefix="/api", tags=["health"])
 app.include_router(user_router, prefix="/api", tags=["users"])
+app.include_router(pose_router, prefix="/api", tags=["pose-analysis"])
 app.include_router(websocket_router, prefix="/api", tags=["websocket"])
 
 

@@ -202,4 +202,27 @@ See `inception/requirements/extension-notes.md` for detailed compliance plan.
    - Created `tests/test_analytics_and_reports.py`.
    - Full test suite passing: **67/67 tests (100%)**.
    - Production frontend build & container recreation verified via browser E2E test.
+---
+
+## Active Feature Initiative (2026-10-06)
+
+### Feature: Archer Pose Biomechanics Analysis & Score Prediction Engine
+
+**Current Phase**: CONSTRUCTION  
+**Current Stage**: Implementation of Units 1 to 5  
+**Git Branch**: `feature/archer-pose-analysis`  
+**Workspace State**: Brownfield existing project (`SPL-3`)
+
+**Stage Status**:
+- [x] **Workspace Detection** — COMPLETE
+- [x] **Requirements Analysis** — COMPLETE (`aidlc-docs/inception/requirements/archer-pose-requirements.md`)
+- [x] **User Stories** — COMPLETE (`aidlc-docs/inception/user-stories/archer-pose-stories.md`)
+- [x] **Workflow Planning** — COMPLETE (`aidlc-docs/inception/plans/archer-pose-workflow-plan.md`)
+- [x] **Unit 1: Kinematic Video Generator (3 sample benchmark videos)** — COMPLETE ✅
+- [x] **Unit 2: Pose CV & ML Prediction Service (MediaPipe + Scikit-Learn)** — COMPLETE ✅
+- [x] **Unit 3: FastAPI Backend API Layer (`/api/pose/*`)** — COMPLETE ✅
+- [x] **Unit 4: React Biomechanics Hub UI (`/pose-analysis`)** — COMPLETE ✅
+- [x] **Unit 5: Automated & E2E Testing (81/81 pytest passed, Browser E2E verified)** — COMPLETE ✅
+
+
 
