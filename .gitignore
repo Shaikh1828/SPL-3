@@ -134,8 +134,8 @@ dmypy.json
 /storage/
 *.db
 poetry.lock
-Data/data.yaml
-Data
+Data/
+Data2/
 frontend/TestImages/*.jpg
 frontend/TestImages/*.png
 frontend/TestImages/*.jpeg

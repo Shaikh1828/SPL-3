@@ -286,9 +286,17 @@ class YOLOArrowDetectionService:
         arrows = []
         h, w = image.shape[:2]
         
+        # Dynamically determine arrow class IDs from model metadata (supports Data2 class 0 and legacy class 4)
+        arrow_classes = {
+            k for k, v in getattr(self.model, "names", {}).items()
+            if "arrow" in str(v).lower()
+        }
+        if not arrow_classes:
+            arrow_classes = {4, 0}
+
         for i in range(len(classes)):
             cls_id = int(classes[i])
-            if cls_id != 4:  # class 4 is 'arrow'
+            if cls_id not in arrow_classes:
                 continue
                 
             bx = boxes[i]
