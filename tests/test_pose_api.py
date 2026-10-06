@@ -98,3 +98,38 @@ class TestPoseAPI:
         assert "draw_elbow_accuracy_pct" in data["components"]
         assert len(data["diagnostics"]) > 0
         assert data["camera_source"] == "archer_posture_cam"
+
+    def test_list_lanes_and_archers(self, test_client: TestClient):
+        """GET /api/pose/lanes-and-archers returns range lanes with assigned archers."""
+        res = test_client.get("/api/pose/lanes-and-archers")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["success"] is True
+        assert len(data["lanes"]) >= 6
+        lane1 = data["lanes"][0]
+        assert lane1["lane_number"] == 1
+        assert "archer" in lane1
+        assert "camera" in lane1
+        assert lane1["archer"]["name"] == "Rumman Shafi"
+
+    def test_analyze_live_camera_frame(self, test_client: TestClient):
+        """POST /api/pose/analyze-live-frame generates 33 landmarks, joint angles, and accuracy."""
+        payload = {
+            "lane_number": 1,
+            "archer_id": 101,
+            "archer_name": "Rumman Shafi",
+            "bow_arm_angle": 179.2,
+            "draw_elbow_angle": 139.0,
+            "anchor_jitter": 0.45,
+            "bow_arm_deflection_deg": 0.35,
+            "anchor_duration_sec": 1.95,
+            "phase": "anchor"
+        }
+        res = test_client.post("/api/pose/analyze-live-frame", json=payload)
+        assert res.status_code == 200
+        data = res.json()
+        assert data["success"] is True
+        assert len(data["landmarks"]) == 33
+        assert data["metrics"]["bow_arm_angle"] == 179.2
+        assert data["posture_accuracy"]["overall_accuracy_pct"] >= 90.0
+        assert data["predicted_score"] in [9, 10]

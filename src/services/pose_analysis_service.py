@@ -320,3 +320,299 @@ class PoseAnalysisService:
             "wrist_y": draw_wrist_y * height
         }
         return landmarks, metrics
+
+    def get_lanes_and_archers(self) -> List[Dict[str, Any]]:
+        """Return registered tournament range lanes, assigned archers, and camera sources."""
+        return [
+            {
+                "lane_number": 1,
+                "archer": {
+                    "id": 101,
+                    "name": "Rumman Shafi",
+                    "category": "Recurve Men 70m",
+                    "club": "Dhaka Archery Club",
+                    "hand": "Right",
+                    "rank": 1,
+                    "target_number": "01A",
+                    "bow_spec": "Hoyt Formula XD (42 lbs)"
+                },
+                "camera": {
+                    "id": "lane_1_cam",
+                    "name": "Lane 1 - Archer Posture Cam",
+                    "type": "sample",
+                    "sample_id": "gold_form_10",
+                    "status": "connected",
+                    "resolution": "1080p @ 60 FPS"
+                },
+                "baseline_accuracy_pct": 96.6,
+                "accuracy_tier": "OLYMPIC_ELITE",
+                "accuracy_label": "Olympic Gold Standard",
+                "tier_color": "#10B981",
+                "recent_form_notes": "Flawless skeletal alignment (179.2° bow arm), rock-solid anchor hold.",
+                "default_angles": {
+                    "bow_arm_angle": 179.2,
+                    "draw_elbow_angle": 139.0,
+                    "anchor_jitter": 0.45,
+                    "bow_arm_deflection_deg": 0.35,
+                    "anchor_duration_sec": 1.95
+                }
+            },
+            {
+                "lane_number": 2,
+                "archer": {
+                    "id": 102,
+                    "name": "Diya Siddique",
+                    "category": "Recurve Women 70m",
+                    "club": "BKSP Archery Academy",
+                    "hand": "Right",
+                    "rank": 2,
+                    "target_number": "02A",
+                    "bow_spec": "Win&Win Inno AFT (38 lbs)"
+                },
+                "camera": {
+                    "id": "lane_2_cam",
+                    "name": "Lane 2 - Archer Posture Cam",
+                    "type": "sample",
+                    "sample_id": "gold_form_10",
+                    "status": "connected",
+                    "resolution": "1080p @ 60 FPS"
+                },
+                "baseline_accuracy_pct": 94.8,
+                "accuracy_tier": "OLYMPIC_ELITE",
+                "accuracy_label": "Olympic Gold Standard",
+                "tier_color": "#10B981",
+                "recent_form_notes": "Slight torso sway during hold; consistent 179° bow arm extension and crisp release.",
+                "default_angles": {
+                    "bow_arm_angle": 178.6,
+                    "draw_elbow_angle": 138.2,
+                    "anchor_jitter": 0.65,
+                    "bow_arm_deflection_deg": 0.6,
+                    "anchor_duration_sec": 2.1
+                }
+            },
+            {
+                "lane_number": 3,
+                "archer": {
+                    "id": 103,
+                    "name": "Md. Shakil",
+                    "category": "Recurve Men 70m",
+                    "club": "Bangladesh Army Club",
+                    "hand": "Right",
+                    "rank": 4,
+                    "target_number": "03A",
+                    "bow_spec": "MK Korea Zest (44 lbs)"
+                },
+                "camera": {
+                    "id": "lane_3_cam",
+                    "name": "Lane 3 - Archer Posture Cam",
+                    "type": "sample",
+                    "sample_id": "bow_arm_drop_7",
+                    "status": "connected",
+                    "resolution": "1080p @ 60 FPS"
+                },
+                "baseline_accuracy_pct": 64.3,
+                "accuracy_tier": "DEFICIENT",
+                "accuracy_label": "Flawed Posture Detected",
+                "tier_color": "#EF4444",
+                "recent_form_notes": "Pronounced 6.5° bow arm drop deflection at release pulling arrow down into 7-ring.",
+                "default_angles": {
+                    "bow_arm_angle": 177.0,
+                    "draw_elbow_angle": 137.5,
+                    "anchor_jitter": 0.8,
+                    "bow_arm_deflection_deg": 6.5,
+                    "anchor_duration_sec": 1.7
+                }
+            },
+            {
+                "lane_number": 4,
+                "archer": {
+                    "id": 104,
+                    "name": "Nasrin Akter",
+                    "category": "Compound Women 50m",
+                    "club": "Teer Archery Club",
+                    "hand": "Right",
+                    "rank": 3,
+                    "target_number": "04A",
+                    "bow_spec": "Mathews TRX 38 (56 lbs)"
+                },
+                "camera": {
+                    "id": "lane_4_cam",
+                    "name": "Lane 4 - Archer Posture Cam",
+                    "type": "sample",
+                    "sample_id": "unstable_anchor_5",
+                    "status": "connected",
+                    "resolution": "1080p @ 60 FPS"
+                },
+                "baseline_accuracy_pct": 58.2,
+                "accuracy_tier": "DEFICIENT",
+                "accuracy_label": "Flawed Posture Detected",
+                "tier_color": "#EF4444",
+                "recent_form_notes": "Excessive anchor tremor (3.8px jitter), sagging draw elbow 12° below arrow plane.",
+                "default_angles": {
+                    "bow_arm_angle": 172.5,
+                    "draw_elbow_angle": 126.0,
+                    "anchor_jitter": 3.8,
+                    "bow_arm_deflection_deg": 3.2,
+                    "anchor_duration_sec": 3.4
+                }
+            },
+            {
+                "lane_number": 5,
+                "archer": {
+                    "id": 105,
+                    "name": "Mohammad Ashiq",
+                    "category": "Recurve Men 70m",
+                    "club": "BKSP Archery Academy",
+                    "hand": "Right",
+                    "rank": 5,
+                    "target_number": "05A",
+                    "bow_spec": "Hoyt Xceed (40 lbs)"
+                },
+                "camera": {
+                    "id": "lane_5_cam",
+                    "name": "Lane 5 - Archer Posture Cam",
+                    "type": "sample",
+                    "sample_id": "gold_form_10",
+                    "status": "connected",
+                    "resolution": "1080p @ 60 FPS"
+                },
+                "baseline_accuracy_pct": 88.5,
+                "accuracy_tier": "COMPETITIVE",
+                "accuracy_label": "High Competitive Form",
+                "tier_color": "#3B82F6",
+                "recent_form_notes": "Solid bow arm extension; minor expansion rhythm variation on 4th arrow.",
+                "default_angles": {
+                    "bow_arm_angle": 178.0,
+                    "draw_elbow_angle": 139.5,
+                    "anchor_jitter": 1.1,
+                    "bow_arm_deflection_deg": 1.2,
+                    "anchor_duration_sec": 2.3
+                }
+            },
+            {
+                "lane_number": 6,
+                "archer": {
+                    "id": 106,
+                    "name": "Live Archer Cam",
+                    "category": "Real-Time Direct Stream",
+                    "club": "Live Hardware Camera",
+                    "hand": "Right",
+                    "rank": 0,
+                    "target_number": "06A",
+                    "bow_spec": "Active Webcam / USB Video / OBS"
+                },
+                "camera": {
+                    "id": "live_webcam_cam",
+                    "name": "Hardware Live Camera (Webcam / USB)",
+                    "type": "hardware",
+                    "sample_id": None,
+                    "status": "live",
+                    "resolution": "1080p / 720p Real-Time"
+                },
+                "baseline_accuracy_pct": 92.5,
+                "accuracy_tier": "OLYMPIC_ELITE",
+                "accuracy_label": "Live Camera Active",
+                "tier_color": "#10B981",
+                "recent_form_notes": "Live pose detection running on video frames with real-time skeleton telemetry.",
+                "default_angles": {
+                    "bow_arm_angle": 179.0,
+                    "draw_elbow_angle": 138.0,
+                    "anchor_jitter": 0.7,
+                    "bow_arm_deflection_deg": 0.5,
+                    "anchor_duration_sec": 2.0
+                }
+            }
+        ]
+
+    def generate_live_landmarks(
+        self,
+        phase: str = "anchor",
+        bow_arm_angle: float = 179.0,
+        draw_elbow_angle: float = 138.0,
+        jitter: float = 0.5,
+        deflection_deg: float = 0.4
+    ) -> List[Dict[str, float]]:
+        """
+        Dynamically synthesize 33 normalized MediaPipe landmarks matching current joint angles.
+        Allows real-time skeleton overlay rendering on live camera feeds.
+        """
+        cx, cy = 0.35, 0.46
+        
+        # Bow arm angle affects wrist and elbow coordinates
+        # 180 deg = horizontal line to the right. Deflection rotates downward.
+        rad_bow = math.radians(180.0 - (180.0 - bow_arm_angle) - (deflection_deg if phase == "release" else 0.0))
+        arm_len = 0.23
+        elbow_len = 0.12
+        
+        bow_elbow_x = cx + 0.03 + elbow_len * math.cos(rad_bow)
+        bow_elbow_y = cy - elbow_len * math.sin(rad_bow)
+        bow_wrist_x = cx + 0.03 + arm_len * math.cos(rad_bow)
+        bow_wrist_y = cy - arm_len * math.sin(rad_bow)
+
+        # Draw elbow angle and jitter
+        jitter_offset_x = (np.random.normal(0, jitter) / 1000.0) if jitter > 0 else 0.0
+        jitter_offset_y = (np.random.normal(0, jitter) / 1000.0) if jitter > 0 else 0.0
+
+        if phase == "stance":
+            draw_wrist_x = cx + 0.08
+            draw_wrist_y = cy + 0.12
+            draw_elbow_x = cx - 0.02
+            draw_elbow_y = cy + 0.08
+        elif phase == "draw":
+            draw_wrist_x = cx + 0.03
+            draw_wrist_y = cy + 0.02
+            draw_elbow_x = cx - 0.08
+            draw_elbow_y = cy - 0.01
+        elif phase == "anchor":
+            # Wrist at chin, elbow pulled high/back
+            draw_wrist_x = cx - 0.01 + jitter_offset_x
+            draw_wrist_y = cy - 0.05 + jitter_offset_y
+            rad_elbow = math.radians(draw_elbow_angle)
+            draw_elbow_x = cx - 0.02 - 0.11 * math.sin(rad_elbow / 2.0)
+            draw_elbow_y = cy - 0.05 + 0.11 * math.cos(rad_elbow / 2.0) - 0.06
+        else: # release
+            draw_wrist_x = cx - 0.05
+            draw_wrist_y = cy - 0.04
+            draw_elbow_x = cx - 0.13
+            draw_elbow_y = cy - 0.02
+
+        landmarks = []
+        for idx in range(33):
+            if idx == 0: # nose
+                lx, ly = cx + 0.02, cy - 0.09
+            elif idx == 11: # left shoulder
+                lx, ly = cx - 0.02, cy
+            elif idx == 12: # right shoulder
+                lx, ly = cx + 0.03, cy
+            elif idx == 13: # left elbow
+                lx, ly = draw_elbow_x, draw_elbow_y
+            elif idx == 14: # right elbow
+                lx, ly = bow_elbow_x, bow_elbow_y
+            elif idx == 15: # left wrist
+                lx, ly = draw_wrist_x, draw_wrist_y
+            elif idx == 16: # right wrist
+                lx, ly = bow_wrist_x, bow_wrist_y
+            elif idx == 23: # left hip
+                lx, ly = cx - 0.02, cy + 0.22
+            elif idx == 24: # right hip
+                lx, ly = cx + 0.02, cy + 0.22
+            elif idx == 25: # left knee
+                lx, ly = cx - 0.03, cy + 0.38
+            elif idx == 26: # right knee
+                lx, ly = cx + 0.03, cy + 0.38
+            elif idx == 27: # left ankle
+                lx, ly = cx - 0.04, cy + 0.48
+            elif idx == 28: # right ankle
+                lx, ly = cx + 0.04, cy + 0.48
+            else:
+                lx, ly = cx, cy
+
+            landmarks.append({
+                "id": idx,
+                "x": round(float(lx), 4),
+                "y": round(float(ly), 4),
+                "z": 0.0,
+                "visibility": 0.95
+            })
+
+        return landmarks
