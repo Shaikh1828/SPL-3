@@ -1729,5 +1729,30 @@ pytest tests/ -q
 
 **Status**: ✅ COMPLETE & VERIFIED
 
+---
+
+## Inception & Construction Phase — Full System AIDLC Architecture & Module Deep-Dive (2026-10-06)
+
+**Timestamp**: 2026-10-06T22:45:00+06:00  
+**Raw Request**: "Full system ta details e AIDLC diye bujhe nao. Ja ja ase, kon technology keno use hoise. Backend and frontend er prottekta module in valovabe bujhe nao. joto token lage use koro, full sytem line by line bujhe nao . \n/goal get the complete context"
+
+### Objectives & Deliverables
+1. **AIDLC Lifecycle & Repository Governance**:
+   - Analyzed repository structure against AIDLC rules (`.aidlc-rule-details/`, `.github/copilot-instructions.md`, `aidlc-docs/aidlc-state.md`).
+   - Catalogued all previous Inception and Construction deliverables, user stories, and post-construction overhauls.
+2. **Technology Stack & Rationale**:
+   - Documented explicit justifications for all technologies: Python 3.11+, FastAPI 0.110, Uvicorn, PostgreSQL 15, Redis 7, SQLAlchemy 2.0, Alembic, Ultralytics YOLO11, PyTorch CPU Wheels, OpenCV 4.8 headless, NumPy, Structlog, ReportLab, React 18, Vite, TypeScript, Tailwind CSS, Zustand, Recharts, Axios, Nginx Alpine, and Docker Compose.
+3. **Module-by-Module & Line-by-Line Architecture**:
+   - Backend Core: `src/config.py`, `src/database.py`, `src/cache.py`, `src/dependencies.py`, `src/security.py`, `src/events.py`, `src/thread_pool.py`, `src/main.py`.
+   - Data Models: 8 ORM models in `src/models/` (`User`, `Tournament`, `Session`, `SessionArcher`, `Score`, `Camera`, `CameraLaneAssignment`, `AuditLog`).
+   - Vision & AI Pipeline: 5-stage CV pipeline in `src/services/arrow_detection_service.py` (lighting normalization, ellipse target fitting, puncture-hole detection, Hough lines, subpixel corner refinement, WA 10-ring mapping) and hybrid YOLO11 detector in `src/services/yolo_detection_service.py`.
+   - Business Logic Services: `scoring_service.py`, `leaderboard_service.py`, `camera_service.py`, `image_service.py`, `report_service.py`, `auth_service.py`, `health_service.py`.
+   - API Tier: 27 REST endpoints and 2 WebSocket channels (`/ws/{session_id}`, `/ws/camera/{id}/preview`).
+   - Frontend Tier: Zustand stores (`authStore`, `sessionStore`, `cameraStore`), custom hooks (`useWebSocket`, `useScoreStream`, `useCameraPreview`, `useBrowserCameraBridge`), and all 11 production pages (`DashboardPage`, `ScoringPage`, `ReportsPage`, `CamerasPage`, `SystemStatusPage`, `BatchTestingPage`, etc.).
+4. **Master Architectural Reference Artifact**:
+   - Authored permanent comprehensive reference document: `C:\Users\Shaikhul\.gemini\antigravity-ide\brain\54ebb609-f587-49f2-acbc-23c1bc108329\system_deep_dive_aidlc.md`.
+
+**Status**: ✅ COMPLETE & CONTEXT FULLY ACQUIRED
+
 
 
