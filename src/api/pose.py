@@ -177,3 +177,36 @@ async def predict_from_metrics(request: MetricPredictRequest):
         "input_features": features,
         "prediction": prediction
     }
+
+
+class PostureEvaluationRequest(BaseModel):
+    bow_arm_angle: float = Field(default=179.0, ge=120.0, le=200.0)
+    draw_elbow_angle: float = Field(default=138.0, ge=90.0, le=180.0)
+    anchor_jitter: float = Field(default=0.8, ge=0.0, le=30.0)
+    bow_arm_deflection_deg: float = Field(default=0.5, ge=0.0, le=30.0)
+    anchor_duration_sec: float = Field(default=1.9, ge=0.2, le=10.0)
+    camera_source: Optional[str] = Field(default="archer_posture_cam", description="Source camera identifier")
+
+
+@router.post("/evaluate-posture")
+async def evaluate_archer_posture(request: PostureEvaluationRequest):
+    """
+    Real-time posture accuracy evaluator for the dedicated Archer Posture Camera.
+    Computes overall accuracy percentage (0-100%), component scores, and form classification.
+    """
+    features = request.model_dump()
+    prediction = score_model.predict(features)
+    accuracy = prediction.get("posture_accuracy", {})
+    return {
+        "success": True,
+        "camera_source": request.camera_source,
+        "overall_accuracy_pct": accuracy.get("overall_accuracy_pct", 90.0),
+        "accuracy_tier": accuracy.get("accuracy_tier", "COMPETITIVE"),
+        "accuracy_label": accuracy.get("accuracy_label", "High Competitive Form"),
+        "tier_color": accuracy.get("tier_color", "#10B981"),
+        "components": accuracy.get("components", {}),
+        "diagnostics": prediction.get("diagnostics", []),
+        "predicted_score": prediction.get("predicted_score"),
+        "score_display": prediction.get("score_display")
+    }
+

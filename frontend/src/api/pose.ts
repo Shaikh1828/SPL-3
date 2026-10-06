@@ -39,5 +39,28 @@ export const poseApi = {
       .post<{ success: boolean; input_features: any; prediction: any }>('/pose/predict-metrics', metrics)
       .then((r) => r.data),
 
+  evaluatePosture: (data: {
+    bow_arm_angle: number
+    draw_elbow_angle: number
+    anchor_jitter: number
+    bow_arm_deflection_deg: number
+    anchor_duration_sec: number
+    camera_source?: string
+  }) =>
+    apiClient
+      .post<{
+        success: boolean
+        camera_source: string
+        overall_accuracy_pct: number
+        accuracy_tier: string
+        accuracy_label: string
+        tier_color: string
+        components: any
+        diagnostics: any[]
+        predicted_score: number
+        score_display: string
+      }>('/pose/evaluate-posture', data)
+      .then((r) => r.data),
+
   getStreamUrl: (videoId: string) => `/api/pose/sample-videos/${videoId}/stream`,
 }

@@ -1792,6 +1792,29 @@ pytest tests/ -q
    - Full backend test suite passing: **81 passed out of 81 tests (100%)**.
    - Frontend production build (`npm run build`) succeeded with 0 errors.
    - Browser Subagent verified live web UI on `http://localhost:5173/pose-analysis` (video player, skeleton canvas, benchmark switching, telemetry cards, and Form Simulator presets).
-
 **Status**: ✅ COMPLETE & VERIFIED
+
+---
+
+## Construction Phase — Archer Dedicated Posture Camera & Real-Time Accuracy Evaluator (2026-10-06)
+
+**Timestamp**: 2026-10-06T23:59:00+06:00  
+**Phase**: CONSTRUCTION  
+**Stage**: Dual-Camera Architecture & Real-Time Posture Accuracy Integration  
+**Raw Request**: "Archer er arekta camera thakbe jekhan theke or posture dekhe bole dibe kototuku accurate, eta add koro, similation tar sathe"
+
+### Objectives:
+1. **Dedicated Archer Posture Camera Feed**:
+   - Provide a secondary camera angle dedicated exclusively to capturing and monitoring the archer's body posture alongside the traditional Target Camera.
+   - Support synchronized Dual-Camera view (Archer Body Camera + Target Camera) and live webcam device connection.
+2. **Real-Time Posture Accuracy Engine**:
+   - Compute comprehensive **Posture Accuracy Score (0-100%)** broken down into:
+     - Bow Arm Alignment Accuracy
+     - Draw Elbow Height Accuracy
+     - Anchor Hold Tremor & Jitter Stability Accuracy
+     - Release Follow-Through Stability Accuracy
+     - Stance / Torso Balance Accuracy
+   - Provide visual feedback pills (e.g., "94.8% Accurate - Olympic Class", "78.2% Accurate - Bow Arm Drop Flaw").
+3. **Simulation Integration**:
+   - Connect posture accuracy calculation into the interactive Form Simulator and synchronized Dual-View player.
 

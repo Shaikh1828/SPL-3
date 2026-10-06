@@ -542,6 +542,22 @@ export interface CoachingDiagnostic {
   message: string
 }
 
+export interface PostureAccuracyComponents {
+  bow_arm_accuracy_pct: number
+  draw_elbow_accuracy_pct: number
+  anchor_stability_accuracy_pct: number
+  release_follow_through_accuracy_pct: number
+  timing_balance_accuracy_pct: number
+}
+
+export interface PostureAccuracyData {
+  overall_accuracy_pct: number
+  accuracy_tier: 'OLYMPIC_ELITE' | 'COMPETITIVE' | 'INTERMEDIATE' | 'DEFICIENT'
+  accuracy_label: string
+  tier_color: string
+  components: PostureAccuracyComponents
+}
+
 export interface BiomechanicsScorePrediction {
   predicted_score: number
   score_display: string
@@ -552,6 +568,7 @@ export interface BiomechanicsScorePrediction {
   zone_description: string
   form_score_pct: number
   confidence: number
+  posture_accuracy?: PostureAccuracyData
   metrics_evaluated: {
     bow_arm_angle: number
     draw_elbow_angle: number

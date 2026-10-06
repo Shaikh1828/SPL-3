@@ -178,6 +178,54 @@ class PoseScoreModel:
             category_color = "#E2E8F0"
             zone_desc = f"White {int_score}-Ring"
 
+        # Multi-dimensional posture accuracy percentage (0-100%)
+        bow_arm_acc = max(0.0, min(100.0, 100.0 - abs(179.2 - bow_arm) * 4.5))
+        draw_elbow_acc = max(0.0, min(100.0, 100.0 - abs(139.0 - draw_elbow) * 3.5))
+        anchor_acc = max(0.0, min(100.0, 100.0 - (jitter * 16.0)))
+        release_acc = max(0.0, min(100.0, 100.0 - (deflection * 12.0)))
+        timing_acc = max(0.0, min(100.0, 100.0 - abs(2.0 - hold_sec) * 25.0))
+        torso_acc = max(0.0, min(100.0, 100.0 - abs(90.0 - tilt) * 6.0))
+
+        overall_acc = round(
+            0.25 * bow_arm_acc +
+            0.25 * release_acc +
+            0.20 * anchor_acc +
+            0.15 * draw_elbow_acc +
+            0.15 * ((timing_acc + torso_acc) / 2.0),
+            1
+        )
+
+        if overall_acc >= 92.0:
+            acc_tier = "OLYMPIC_ELITE"
+            acc_label = "Olympic Gold Standard"
+            acc_color = "#10B981"  # Emerald
+        elif overall_acc >= 82.0:
+            acc_label = "High Competitive Form"
+            acc_tier = "COMPETITIVE"
+            acc_color = "#3B82F6"  # Blue
+        elif overall_acc >= 70.0:
+            acc_label = "Moderate Form Deviation"
+            acc_tier = "INTERMEDIATE"
+            acc_color = "#F59E0B"  # Amber
+        else:
+            acc_label = "Flawed Posture Detected"
+            acc_tier = "DEFICIENT"
+            acc_color = "#EF4444"  # Rose
+
+        posture_accuracy = {
+            "overall_accuracy_pct": overall_acc,
+            "accuracy_tier": acc_tier,
+            "accuracy_label": acc_label,
+            "tier_color": acc_color,
+            "components": {
+                "bow_arm_accuracy_pct": round(bow_arm_acc, 1),
+                "draw_elbow_accuracy_pct": round(draw_elbow_acc, 1),
+                "anchor_stability_accuracy_pct": round(anchor_acc, 1),
+                "release_follow_through_accuracy_pct": round(release_acc, 1),
+                "timing_balance_accuracy_pct": round(timing_acc, 1),
+            }
+        }
+
         # Diagnostic ratings & coaching tips
         diagnostics = self._generate_coaching_diagnostics(bow_arm, draw_elbow, jitter, deflection, hold_sec)
 
@@ -191,6 +239,7 @@ class PoseScoreModel:
             "zone_description": zone_desc,
             "form_score_pct": form_score_pct,
             "confidence": round(float(np.clip(0.85 + (form_score_pct / 1000.0), 0.82, 0.96)), 2),
+            "posture_accuracy": posture_accuracy,
             "metrics_evaluated": {
                 "bow_arm_angle": round(bow_arm, 1),
                 "draw_elbow_angle": round(draw_elbow, 1),

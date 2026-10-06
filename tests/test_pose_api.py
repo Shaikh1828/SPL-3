@@ -77,3 +77,24 @@ class TestPoseAPI:
         )
         assert res.status_code == 206
         assert "bytes 0-1023/" in res.headers.get("content-range", "")
+
+    def test_evaluate_posture_endpoint(self, test_client: TestClient):
+        """POST /api/pose/evaluate-posture computes posture accuracy % and diagnostic tiers."""
+        payload = {
+            "bow_arm_angle": 179.0,
+            "draw_elbow_angle": 138.5,
+            "anchor_jitter": 0.5,
+            "bow_arm_deflection_deg": 0.4,
+            "anchor_duration_sec": 1.95,
+            "camera_source": "archer_posture_cam"
+        }
+        res = test_client.post("/api/pose/evaluate-posture", json=payload)
+        assert res.status_code == 200
+        data = res.json()
+        assert "overall_accuracy_pct" in data
+        assert data["overall_accuracy_pct"] >= 90.0
+        assert data["accuracy_tier"] in ["OLYMPIC_ELITE", "COMPETITIVE"]
+        assert "bow_arm_accuracy_pct" in data["components"]
+        assert "draw_elbow_accuracy_pct" in data["components"]
+        assert len(data["diagnostics"]) > 0
+        assert data["camera_source"] == "archer_posture_cam"
