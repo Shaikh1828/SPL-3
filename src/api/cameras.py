@@ -12,7 +12,7 @@ Endpoints:
 """
 
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as SQLSession
 import structlog
@@ -713,23 +713,54 @@ class PushFrameBody(BaseModel):
 @router.post("/cameras/{camera_id}/push-frame", status_code=status.HTTP_200_OK)
 async def push_camera_frame(
     camera_id: int,
-    body: Optional[PushFrameBody] = None,
-    file: Optional[UploadFile] = File(None),
+    request: Request,
     db: SQLSession = Depends(get_db),
     current_user: User = Depends(require_camera_manager),
 ):
     """
     Push a live video frame from the client browser / OBS bridge into backend camera memory.
+    Supports application/json ({ image_base64: '...' }), multipart/form-data, or raw image bytes.
     """
     import base64
     frame_bytes = None
-    if file:
-        frame_bytes = await file.read()
-    elif body and body.image_base64:
-        b64_data = body.image_base64
-        if "," in b64_data:
-            b64_data = b64_data.split(",", 1)[1]
-        frame_bytes = base64.b64decode(b64_data)
+    content_type = request.headers.get("content-type", "")
+
+    if "application/json" in content_type:
+        try:
+            data = await request.json()
+            b64_data = data.get("image_base64") or data.get("image") or ""
+            if "," in b64_data:
+                b64_data = b64_data.split(",", 1)[1]
+            if b64_data:
+                frame_bytes = base64.b64decode(b64_data)
+        except Exception:
+            pass
+    elif "multipart/form-data" in content_type:
+        try:
+            form = await request.form()
+            file_item = form.get("file")
+            if file_item and hasattr(file_item, "read"):
+                frame_bytes = await file_item.read()
+            elif "image_base64" in form:
+                b64_data = str(form["image_base64"])
+                if "," in b64_data:
+                    b64_data = b64_data.split(",", 1)[1]
+                frame_bytes = base64.b64decode(b64_data)
+        except Exception:
+            pass
+    else:
+        raw_body = await request.body()
+        if raw_body:
+            if raw_body.startswith(b"data:image") or b"base64" in raw_body[:30]:
+                try:
+                    s = raw_body.decode("utf-8")
+                    if "," in s:
+                        s = s.split(",", 1)[1]
+                    frame_bytes = base64.b64decode(s)
+                except Exception:
+                    frame_bytes = raw_body
+            else:
+                frame_bytes = raw_body
 
     if not frame_bytes:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No valid frame provided")
@@ -756,23 +787,54 @@ async def push_camera_frame(
 async def push_lane_frame(
     session_id: int,
     lane: int,
-    body: Optional[PushFrameBody] = None,
-    file: Optional[UploadFile] = File(None),
+    request: Request,
     db: SQLSession = Depends(get_db),
     current_user: User = Depends(require_camera_manager),
 ):
     """
     Push a live video frame directly for a session lane.
+    Supports application/json ({ image_base64: '...' }), multipart/form-data, or raw image bytes.
     """
     import base64
     frame_bytes = None
-    if file:
-        frame_bytes = await file.read()
-    elif body and body.image_base64:
-        b64_data = body.image_base64
-        if "," in b64_data:
-            b64_data = b64_data.split(",", 1)[1]
-        frame_bytes = base64.b64decode(b64_data)
+    content_type = request.headers.get("content-type", "")
+
+    if "application/json" in content_type:
+        try:
+            data = await request.json()
+            b64_data = data.get("image_base64") or data.get("image") or ""
+            if "," in b64_data:
+                b64_data = b64_data.split(",", 1)[1]
+            if b64_data:
+                frame_bytes = base64.b64decode(b64_data)
+        except Exception:
+            pass
+    elif "multipart/form-data" in content_type:
+        try:
+            form = await request.form()
+            file_item = form.get("file")
+            if file_item and hasattr(file_item, "read"):
+                frame_bytes = await file_item.read()
+            elif "image_base64" in form:
+                b64_data = str(form["image_base64"])
+                if "," in b64_data:
+                    b64_data = b64_data.split(",", 1)[1]
+                frame_bytes = base64.b64decode(b64_data)
+        except Exception:
+            pass
+    else:
+        raw_body = await request.body()
+        if raw_body:
+            if raw_body.startswith(b"data:image") or b"base64" in raw_body[:30]:
+                try:
+                    s = raw_body.decode("utf-8")
+                    if "," in s:
+                        s = s.split(",", 1)[1]
+                    frame_bytes = base64.b64decode(s)
+                except Exception:
+                    frame_bytes = raw_body
+            else:
+                frame_bytes = raw_body
 
     if not frame_bytes:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No valid frame provided")

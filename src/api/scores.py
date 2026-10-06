@@ -1301,9 +1301,9 @@ async def ai_score_round(
 
             detected_arrows = None
             end_total = 0
-            avg_conf = 0.95
+            avg_conf = 0.0
             ann_img = None
-            method_used = "yolo11_consensus"
+            method_used = "yolo11_live_stream"
 
             # 1. Attempt live camera capture if camera or stream is active on this lane
             frame_bytes, lane_cam = CameraService.capture_lane_frame(db, session_id, lane_num)
@@ -1324,16 +1324,18 @@ async def ai_score_round(
 
                     method_used = detection.get("method", "yolo11_live_stream")
                     det_arrows_list = detection.get("arrows", [])
-                    primary_zone = detection.get("zone", 10) or 10
-                    primary_pts = detection.get("points", primary_zone) or primary_zone
-                    primary_conf = float(detection.get("confidence") or 0.95)
+                    primary_zone = detection.get("zone")
+                    primary_pts = detection.get("points")
+                    primary_conf = float(detection.get("confidence") or 0.0)
 
                     detected_arrows = []
                     if det_arrows_list:
                         for a_idx, arr in enumerate(det_arrows_list[:arrows_per_round], 1):
-                            pts = arr.get("points") if arr.get("points") is not None else (arr.get("zone") or primary_pts)
-                            z_str = "X" if arr.get("is_x") else str(pts)
-                            c_val = min(0.99, max(0.60, round(float(arr.get("confidence") or primary_conf), 3)))
+                            pts = arr.get("points") if arr.get("points") is not None else (arr.get("zone") or 0)
+                            if pts is None:
+                                pts = 0
+                            z_str = "X" if arr.get("is_x") else ("M" if pts == 0 else str(pts))
+                            c_val = min(0.99, max(0.0, round(float(arr.get("confidence") or primary_conf), 3)))
                             detected_arrows.append(
                                 DetectedArrow(
                                     arrow_num=a_idx,
@@ -1346,13 +1348,13 @@ async def ai_score_round(
                                     is_override=False,
                                 )
                             )
-                    else:
+                    elif primary_pts is not None and primary_pts > 0:
                         detected_arrows.append(
                             DetectedArrow(
                                 arrow_num=1,
                                 points=int(primary_pts),
                                 zone="X" if (primary_pts == 10 and primary_zone == 10) else str(primary_pts),
-                                confidence=min(0.99, max(0.60, round(primary_conf, 3))),
+                                confidence=min(0.99, max(0.0, round(primary_conf, 3))),
                                 is_x=bool(primary_pts == 10 and primary_zone == 10),
                                 tip_x=round(float(detection.get("arrow_tip", (320, 240))[0] if detection.get("arrow_tip") else 320), 1),
                                 tip_y=round(float(detection.get("arrow_tip", (320, 240))[1] if detection.get("arrow_tip") else 240), 1),
@@ -1360,29 +1362,45 @@ async def ai_score_round(
                             )
                         )
 
-                    # Fill remaining arrows if fewer than arrows_per_round
+                    # Fill remaining arrows if fewer than arrows_per_round with 0 points (Miss)
                     while len(detected_arrows) < arrows_per_round:
                         extra_idx = len(detected_arrows) + 1
                         detected_arrows.append(
                             DetectedArrow(
                                 arrow_num=extra_idx,
-                                points=int(primary_pts),
-                                zone=str(primary_pts),
-                                confidence=min(0.99, max(0.60, round(primary_conf * 0.98, 3))),
+                                points=0,
+                                zone="M",
+                                confidence=0.0,
                                 is_x=False,
-                                tip_x=320.0,
-                                tip_y=240.0,
+                                tip_x=0.0,
+                                tip_y=0.0,
                                 is_override=False,
                             )
                         )
                     end_total = sum(a.points for a in detected_arrows)
-                    avg_conf = round(sum(a.confidence for a in detected_arrows) / len(detected_arrows), 3)
+                    conf_scores = [a.confidence for a in detected_arrows if a.points > 0]
+                    avg_conf = round(sum(conf_scores) / len(conf_scores), 3) if conf_scores else 0.0
                 except Exception as ex:
-                    logger.warning("camera_stream_detection_fallback", lane=lane_num, error=str(ex))
-                    detected_arrows = None
+                    logger.warning("camera_stream_detection_error", lane=lane_num, error=str(ex))
+                    detected_arrows = [
+                        DetectedArrow(
+                            arrow_num=i,
+                            points=0,
+                            zone="M",
+                            confidence=0.0,
+                            is_x=False,
+                            tip_x=0.0,
+                            tip_y=0.0,
+                            is_override=False,
+                        )
+                        for i in range(1, arrows_per_round + 1)
+                    ]
+                    end_total = 0
+                    avg_conf = 0.0
 
-            # 2. Intelligent synthetic / dataset fallback ONLY if camera feed is truly unavailable
-            if not detected_arrows:
+            # 2. Synthetic fallback ONLY if no camera frame was available at all
+            if detected_arrows is None:
+                method_used = "yolo11_consensus"
                 detected_arrows, end_total, avg_conf, ann_img = _generate_synthetic_target_detection(
                     lane_number=lane_num,
                     session_id=session_id,
@@ -1616,15 +1634,20 @@ async def capture_lane_camera_score(
         frame_bytes,
     )
 
-    zone = detection.get("zone", 10) or 10
-    points = detection.get("points", zone) or zone
-    confidence = detection.get("confidence", 0.95)
+    zone = detection.get("zone")
+    points = detection.get("points")
+    confidence = float(detection.get("confidence") or 0.0)
     arrows = detection.get("arrows", [])
+    if points is None:
+        points = 0
+        zone = 0
+        confidence = 0.0
     if not arrows:
         arrows = [{"zone": zone, "points": points, "confidence": confidence}]
 
     total_points = sum(arr.get("points") or 0 for arr in arrows)
-    avg_conf = sum(arr.get("confidence") or 0.0 for arr in arrows) / len(arrows)
+    conf_list = [arr.get("confidence") or 0.0 for arr in arrows if (arr.get("points") or 0) > 0]
+    avg_conf = (sum(conf_list) / len(conf_list)) if conf_list else 0.0
 
     # Determine arrow sequence number
     existing_count = db.query(Score).filter(
