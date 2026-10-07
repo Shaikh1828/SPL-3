@@ -10,6 +10,8 @@ Handles:
 """
 
 import json
+import time
+import fnmatch
 from typing import Any, Optional
 
 import redis
@@ -21,17 +23,38 @@ logger = structlog.get_logger()
 
 
 class CacheManager:
-    """Redis-based cache manager with TTL support."""
+    """Redis-based cache manager with TTL support and graceful in-memory fallback."""
 
     def __init__(self):
-        """Initialize Redis connection pool."""
-        self.redis_client = redis.from_url(
-            settings.redis_url,
-            max_connections=settings.redis_max_connections,
-            socket_connect_timeout=settings.redis_socket_connect_timeout,
-            socket_keepalive=settings.redis_socket_keepalive,
-            decode_responses=True,
-        )
+        """Initialize Redis connection pool and in-memory fallback store."""
+        self._memory_cache: dict[str, Any] = {}
+        self._memory_expiry: dict[str, float] = {}
+        self._redis_disabled_until: float = 0.0
+
+        try:
+            self.redis_client = redis.from_url(
+                settings.redis_url,
+                max_connections=settings.redis_max_connections,
+                socket_connect_timeout=min(settings.redis_socket_connect_timeout, 1.0),
+                socket_timeout=1.0,
+                socket_keepalive=settings.redis_socket_keepalive,
+                decode_responses=True,
+            )
+        except Exception:
+            self.redis_client = None
+
+    def _is_redis_ready(self) -> bool:
+        """Check if Redis client is available and not in backoff period."""
+        if not self.redis_client:
+            return False
+        if time.time() < self._redis_disabled_until:
+            return False
+        return True
+
+    def _mark_redis_failed(self, error: Exception):
+        """Back off Redis for 30 seconds when connection fails to prevent latency degradation."""
+        self._redis_disabled_until = time.time() + 30.0
+        logger.warning("redis_connection_failed_falling_back_to_memory", error=str(error))
 
     def get(self, key: str) -> Optional[Any]:
         """
@@ -43,14 +66,24 @@ class CacheManager:
         Returns:
             Cached value (deserialized) or None if not found
         """
-        try:
-            value = self.redis_client.get(key)
-            if value:
-                return json.loads(value)
-            return None
-        except Exception as e:
-            logger.warning("cache_get_error", key=key, error=str(e))
-            return None
+        if self._is_redis_ready():
+            try:
+                value = self.redis_client.get(key)
+                if value:
+                    return json.loads(value)
+                return None
+            except Exception as e:
+                self._mark_redis_failed(e)
+
+        # Fallback to in-memory cache
+        now = time.time()
+        if key in self._memory_cache:
+            if now < self._memory_expiry.get(key, float("inf")):
+                return self._memory_cache[key]
+            else:
+                self._memory_cache.pop(key, None)
+                self._memory_expiry.pop(key, None)
+        return None
 
     def set(self, key: str, value: Any, ttl_seconds: int = 3600):
         """
@@ -61,12 +94,17 @@ class CacheManager:
             value: Value to cache (will be JSON serialized)
             ttl_seconds: Time to live in seconds (default 1 hour)
         """
-        try:
-            serialized = json.dumps(value)
-            self.redis_client.setex(key, ttl_seconds, serialized)
-            logger.debug("cache_set", key=key, ttl_seconds=ttl_seconds)
-        except Exception as e:
-            logger.warning("cache_set_error", key=key, error=str(e))
+        # Always maintain memory cache
+        self._memory_cache[key] = value
+        self._memory_expiry[key] = time.time() + ttl_seconds
+
+        if self._is_redis_ready():
+            try:
+                serialized = json.dumps(value)
+                self.redis_client.setex(key, ttl_seconds, serialized)
+                logger.debug("cache_set", key=key, ttl_seconds=ttl_seconds)
+            except Exception as e:
+                self._mark_redis_failed(e)
 
     def delete(self, key: str):
         """
@@ -75,11 +113,15 @@ class CacheManager:
         Args:
             key: Cache key
         """
-        try:
-            self.redis_client.delete(key)
-            logger.debug("cache_deleted", key=key)
-        except Exception as e:
-            logger.warning("cache_delete_error", key=key, error=str(e))
+        self._memory_cache.pop(key, None)
+        self._memory_expiry.pop(key, None)
+
+        if self._is_redis_ready():
+            try:
+                self.redis_client.delete(key)
+                logger.debug("cache_deleted", key=key)
+            except Exception as e:
+                self._mark_redis_failed(e)
 
     def delete_pattern(self, pattern: str) -> int:
         """
@@ -91,16 +133,24 @@ class CacheManager:
         Returns:
             Number of keys deleted
         """
-        try:
-            keys = self.redis_client.keys(pattern)
-            if keys:
-                deleted = self.redis_client.delete(*keys)
-                logger.debug("cache_pattern_deleted", pattern=pattern, count=deleted)
-                return deleted
-            return 0
-        except Exception as e:
-            logger.warning("cache_delete_pattern_error", pattern=pattern, error=str(e))
-            return 0
+        deleted = 0
+        matched_keys = [k for k in list(self._memory_cache.keys()) if fnmatch.fnmatch(k, pattern)]
+        for k in matched_keys:
+            self._memory_cache.pop(k, None)
+            self._memory_expiry.pop(k, None)
+            deleted += 1
+
+        if self._is_redis_ready():
+            try:
+                keys = self.redis_client.keys(pattern)
+                if keys:
+                    r_del = self.redis_client.delete(*keys)
+                    logger.debug("cache_pattern_deleted", pattern=pattern, count=r_del)
+                    return r_del
+            except Exception as e:
+                self._mark_redis_failed(e)
+
+        return deleted
 
     def ping(self) -> bool:
         """
@@ -109,11 +159,12 @@ class CacheManager:
         Returns:
             True if connected, False otherwise
         """
-        try:
-            return self.redis_client.ping()
-        except Exception as e:
-            logger.warning("cache_ping_error", error=str(e))
-            return False
+        if self._is_redis_ready():
+            try:
+                return self.redis_client.ping()
+            except Exception as e:
+                self._mark_redis_failed(e)
+        return False
 
 
 # Global cache manager instance

@@ -35,7 +35,9 @@ class Tournament(Base):
 
     # Relationships
     created_by_user: Mapped["User"] = relationship("User", back_populates="tournaments")
-    sessions: Mapped[list["Session"]] = relationship("Session", back_populates="tournament")
+    sessions: Mapped[list["Session"]] = relationship(
+        "Session", back_populates="tournament", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Tournament(id={self.id}, name={self.name}, location={self.location})>"
@@ -88,11 +90,11 @@ class Session(Base):
     # Relationships
     tournament: Mapped["Tournament"] = relationship("Tournament", back_populates="sessions")
     session_archers: Mapped[list["SessionArcher"]] = relationship(
-        "SessionArcher", back_populates="session"
+        "SessionArcher", back_populates="session", cascade="all, delete-orphan"
     )
     scores: Mapped[list["Score"]] = relationship("Score", back_populates="session", cascade="all, delete-orphan")
     camera_assignments: Mapped[list["CameraLaneAssignment"]] = relationship(
-        "CameraLaneAssignment", back_populates="session"
+        "CameraLaneAssignment", back_populates="session", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

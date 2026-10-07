@@ -39,9 +39,17 @@ export interface Tournament {
   location?: string
   start_date: string
   end_date: string
-  created_by: number
-  created_at: string
-  updated_at: string
+  created_by?: number
+  created_by_user_id?: number
+  created_at?: string
+  updated_at?: string
+  status?: 'ongoing' | 'completed' | 'upcoming'
+  total_sessions?: number
+  active_sessions?: number
+  completed_sessions?: number
+  total_archers?: number
+  winner_name?: string
+  winner_score?: number
 }
 
 export interface TournamentCreate {

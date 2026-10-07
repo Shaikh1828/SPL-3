@@ -118,7 +118,11 @@ class TestTournamentAPI:
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data) > 0
+        assert "items" in data
+        assert data["total"] > 0
+        first_item = data["items"][0]
+        assert "status" in first_item
+        assert "total_sessions" in first_item
 
     def test_create_tournament(self, test_client: TestClient, auth_headers):
         """Test creating tournament."""
@@ -138,6 +142,7 @@ class TestTournamentAPI:
         assert response.status_code == 201
         data = response.json()
         assert data["name"] == "New Tournament"
+        assert data["status"] in ["ongoing", "upcoming", "completed"]
 
     def test_get_tournament(self, test_client: TestClient, test_tournament):
         """Test getting tournament by ID."""
@@ -147,6 +152,83 @@ class TestTournamentAPI:
         data = response.json()
         assert data["id"] == test_tournament.id
         assert data["name"] == "Test Tournament"
+        assert "status" in data
+        assert "total_sessions" in data
+
+    def test_tournament_status_filtering_and_cascade_delete(
+        self, test_client: TestClient, admin_auth_headers: dict, test_db
+    ):
+        """Test status filtering (ongoing, completed, upcoming) and cascading delete."""
+        from datetime import datetime, timedelta
+        from src.models.tournament import Tournament, Session as TournamentSession
+        from src.models.scoring import SessionArcher
+
+        now = datetime.utcnow()
+        # 1. Create a completed tournament
+        t_comp = Tournament(
+            name="Test Completed Cup 2026",
+            location="Test Arena",
+            start_date=now - timedelta(days=10),
+            end_date=now - timedelta(days=5),
+            created_by_user_id=1,
+        )
+        test_db.add(t_comp)
+        test_db.commit()
+        test_db.refresh(t_comp)
+
+        s_comp = TournamentSession(
+            tournament_id=t_comp.id,
+            name="Final Match",
+            round_number=1,
+            num_lanes=2,
+            arrows_per_round=6,
+            status="completed",
+        )
+        test_db.add(s_comp)
+        test_db.commit()
+        test_db.refresh(s_comp)
+
+        sa = SessionArcher(
+            session_id=s_comp.id,
+            archer_id=1,
+            archer_name="Champion Archer",
+            lane_number=1,
+            total_score=118,
+        )
+        test_db.add(sa)
+        test_db.commit()
+
+        # Query completed
+        res_comp = test_client.get("/api/tournaments?status=completed")
+        assert res_comp.status_code == 200
+        items_comp = res_comp.json()["items"]
+        assert any(t["id"] == t_comp.id for t in items_comp)
+        matched = next(t for t in items_comp if t["id"] == t_comp.id)
+        assert matched["status"] == "completed"
+        assert matched["winner_name"] == "Champion Archer"
+        assert matched["winner_score"] == 118
+
+        # 2. Update tournament
+        res_put = test_client.put(
+            f"/api/tournaments/{t_comp.id}",
+            json={
+                "name": "Updated Completed Cup 2026",
+                "location": "Updated Arena",
+                "start_date": (now - timedelta(days=10)).isoformat(),
+                "end_date": (now - timedelta(days=5)).isoformat(),
+            },
+            headers=admin_auth_headers,
+        )
+        assert res_put.status_code == 200
+        assert res_put.json()["name"] == "Updated Completed Cup 2026"
+
+        # 3. Delete tournament (admin role)
+        res_del = test_client.delete(f"/api/tournaments/{t_comp.id}", headers=admin_auth_headers)
+        assert res_del.status_code == 200
+
+        # Verify deletion
+        res_get_deleted = test_client.get(f"/api/tournaments/{t_comp.id}")
+        assert res_get_deleted.status_code == 404
 
 
 # ============================================================================

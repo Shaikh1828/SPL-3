@@ -85,42 +85,93 @@ def seed_users(db: Session):
 
 
 def seed_tournaments(db: Session, admin_user: User):
-    """Create concurrent active & upcoming seed tournaments."""
+    """Create realistic ongoing, completed, and upcoming tournaments."""
     logger.info("seeding_tournaments")
 
     now = datetime.utcnow()
     tournaments_data = [
+        # --- ONGOING TOURNAMENTS ---
         {
             "name": "National Outdoor Archery Championship 2026",
-            "location": "National Sports Stadium Range",
-            "description": "Premiere 70m national outdoor archery championship with recurve and compound categories.",
+            "location": "National Sports Stadium Range, Dhaka",
+            "description": "Premiere 70m national outdoor archery championship featuring World Cup archers and live AI target vision.",
             "start_date": now - timedelta(days=1),
-            "end_date": now + timedelta(days=4),
-        },
-        {
-            "name": "Spring Grand Prix 2026",
-            "location": "Central Park Archery Range",
-            "description": "Annual international spring grand prix tournament with multi-lane AI target vision.",
-            "start_date": now,
             "end_date": now + timedelta(days=3),
+            "sessions": [
+                {"name": "Session 1 - Recurve Men & Women 720 Round", "round_number": 1, "num_lanes": 6, "arrows_per_round": 6, "status": "active"},
+                {"name": "Session 2 - Compound 50m Elimination", "round_number": 2, "num_lanes": 6, "arrows_per_round": 6, "status": "active"},
+                {"name": "Session 3 - Gold & Bronze Medal Finals", "round_number": 3, "num_lanes": 4, "arrows_per_round": 3, "status": "paused"},
+            ],
         },
         {
-            "name": "Olympic Qualification Trials 2026",
-            "location": "Elite Performance Archery Center",
-            "description": "High-stakes Olympic team qualification trials with precision millimeter scoring.",
-            "start_date": now - timedelta(hours=6),
+            "name": "Asia Cup Archery Stage 2 - 2026",
+            "location": "BKSP Archery Ground, Savar",
+            "description": "Continental stage-2 tournament with international competitors and multi-camera live lane tracking.",
+            "start_date": now - timedelta(hours=18),
             "end_date": now + timedelta(days=2),
+            "sessions": [
+                {"name": "Session 1 - Qualification 70m", "round_number": 1, "num_lanes": 6, "arrows_per_round": 6, "status": "active"},
+                {"name": "Session 2 - 1/8 Elimination Finals", "round_number": 2, "num_lanes": 6, "arrows_per_round": 6, "status": "active"},
+            ],
+        },
+        # --- COMPLETED TOURNAMENTS ---
+        {
+            "name": "Bangladesh Independence Cup 2026",
+            "location": "Army Stadium Archery Arena, Dhaka",
+            "description": "Annual Independence Day Invitational. Completed championship with high-scoring finals and podium ceremony.",
+            "start_date": now - timedelta(days=14),
+            "end_date": now - timedelta(days=10),
+            "sessions": [
+                {"name": "Finals - Gold Medal Match", "round_number": 1, "num_lanes": 6, "arrows_per_round": 6, "status": "completed"},
+                {"name": "Semi-Finals - Recurve Elimination", "round_number": 2, "num_lanes": 6, "arrows_per_round": 6, "status": "completed"},
+            ],
         },
         {
-            "name": "Summer Regional Qualifier 2026",
-            "location": "Downtown Sports Complex",
-            "description": "Regional qualifier for summer games and youth cup championships.",
-            "start_date": now + timedelta(days=5),
-            "end_date": now + timedelta(days=8),
+            "name": "Teer 14th National Archery Championship",
+            "location": "Shaheed Ahsan Ullah Master Stadium, Tongi",
+            "description": "Historic national championship crowned with national team records in 70m individual recurve.",
+            "start_date": now - timedelta(days=32),
+            "end_date": now - timedelta(days=28),
+            "sessions": [
+                {"name": "Championship Round 720", "round_number": 1, "num_lanes": 6, "arrows_per_round": 6, "status": "completed"},
+            ],
+        },
+        {
+            "name": "Winter Invitational Grand Prix 2025",
+            "location": "Sylhet International Sports Range",
+            "description": "International winter open tournament. Fully concluded with official records archived.",
+            "start_date": now - timedelta(days=90),
+            "end_date": now - timedelta(days=86),
+            "sessions": [
+                {"name": "All-Stars Final Round", "round_number": 1, "num_lanes": 6, "arrows_per_round": 6, "status": "completed"},
+            ],
+        },
+        # --- UPCOMING TOURNAMENTS ---
+        {
+            "name": "Asian Archery Grand Prix 2026",
+            "location": "Chittagong Port Sports Complex",
+            "description": "Upcoming international major tournament scheduled next month with 16 nations participating.",
+            "start_date": now + timedelta(days=12),
+            "end_date": now + timedelta(days=16),
+            "sessions": [
+                {"name": "Preliminary Round A", "round_number": 1, "num_lanes": 6, "arrows_per_round": 6, "status": "paused"},
+            ],
+        },
+        {
+            "name": "Inter-University Archery Meet 2026",
+            "location": "University Physical Education Field",
+            "description": "National collegiate archery championship scheduled for next semester.",
+            "start_date": now + timedelta(days=25),
+            "end_date": now + timedelta(days=28),
+            "sessions": [
+                {"name": "Collegiate Qualification", "round_number": 1, "num_lanes": 4, "arrows_per_round": 6, "status": "paused"},
+            ],
         },
     ]
 
     tournaments = []
+    sessions_to_create = []
+
     for t_data in tournaments_data:
         existing = db.query(Tournament).filter(Tournament.name == t_data["name"]).first()
         if not existing:
@@ -136,50 +187,45 @@ def seed_tournaments(db: Session, admin_user: User):
             db.commit()
             db.refresh(t)
             tournaments.append(t)
+            t_obj = t
         else:
+            existing.location = t_data["location"]
+            existing.description = t_data["description"]
+            existing.start_date = t_data["start_date"]
+            existing.end_date = t_data["end_date"]
+            db.commit()
             tournaments.append(existing)
+            t_obj = existing
 
-    logger.info("tournaments_seeded", count=len(tournaments))
-    return tournaments
-
-
-def seed_sessions(db: Session, tournaments: list):
-    """Create multi-round active sessions for each concurrent tournament."""
-    logger.info("seeding_sessions")
-
-    sessions = []
-    session_templates = [
-        {"name": "Session 1 - Qualification 720 Round", "round_number": 1, "num_lanes": 6, "arrows_per_round": 6, "status": "active"},
-        {"name": "Session 2 - Elimination 1/8 Finals", "round_number": 2, "num_lanes": 6, "arrows_per_round": 6, "status": "active"},
-        {"name": "Session 3 - Gold & Bronze Medal Match", "round_number": 3, "num_lanes": 4, "arrows_per_round": 3, "status": "paused"},
-    ]
-
-    for tournament in tournaments:
-        for idx, template in enumerate(session_templates):
-            existing = db.query(TournamentSession).filter(
-                TournamentSession.tournament_id == tournament.id,
-                TournamentSession.name == template["name"],
+        # Create tournament-specific sessions
+        for s_template in t_data.get("sessions", []):
+            existing_sess = db.query(TournamentSession).filter(
+                TournamentSession.tournament_id == t_obj.id,
+                TournamentSession.name == s_template["name"],
             ).first()
 
-            if not existing:
-                session = TournamentSession(
-                    tournament_id=tournament.id,
-                    name=template["name"],
-                    round_number=template["round_number"],
-                    num_lanes=template["num_lanes"],
-                    arrows_per_round=template["arrows_per_round"],
-                    status=template["status"],
-                    start_time=datetime.utcnow() if template["status"] == "active" else None,
+            if not existing_sess:
+                sess = TournamentSession(
+                    tournament_id=t_obj.id,
+                    name=s_template["name"],
+                    round_number=s_template["round_number"],
+                    num_lanes=s_template["num_lanes"],
+                    arrows_per_round=s_template["arrows_per_round"],
+                    status=s_template["status"],
+                    start_time=t_data["start_date"] if s_template["status"] in ["active", "completed"] else None,
+                    end_time=t_data["end_date"] if s_template["status"] == "completed" else None,
                 )
-                db.add(session)
+                db.add(sess)
                 db.commit()
-                db.refresh(session)
-                sessions.append(session)
+                db.refresh(sess)
+                sessions_to_create.append(sess)
             else:
-                sessions.append(existing)
+                existing_sess.status = s_template["status"]
+                db.commit()
+                sessions_to_create.append(existing_sess)
 
-    logger.info("sessions_seeded", count=len(sessions))
-    return sessions
+    logger.info("tournaments_seeded", count=len(tournaments))
+    return tournaments, sessions_to_create
 
 
 def seed_session_archers(db: Session, sessions: list):
@@ -360,29 +406,41 @@ def main():
         users = seed_users(db)
         admin_user = users[0]
 
-        tournaments = seed_tournaments(db, admin_user)
-        sessions = seed_sessions(db, tournaments)
+        # Clean up obsolete/duplicate test tournaments
+        dummy_tournaments = db.query(Tournament).filter(
+            (Tournament.name.ilike("%E2E Olympic%")) | 
+            (Tournament.name == "Test Tournament") | 
+            (Tournament.name == "Test No Location")
+        ).all()
+        for dt in dummy_tournaments:
+            dt_sessions = db.query(TournamentSession).filter(TournamentSession.tournament_id == dt.id).all()
+            for s in dt_sessions:
+                db.delete(s)
+            db.delete(dt)
+        db.commit()
+
+        tournaments, sessions = seed_tournaments(db, admin_user)
         session_archers = seed_session_archers(db, sessions)
         scores = seed_scores(db, session_archers)
         cameras = seed_cameras(db)
         camera_assignments = seed_camera_assignments(db, sessions, cameras)
 
         # Integrity check: verify that archer totals match sum of individual score points
-        for sa in session_archers[:15]:
+        for sa in session_archers:
             calc_sum = db.query(func.sum(Score.points)).filter(Score.session_archer_id == sa.id).scalar() or 0
             if sa.total_score != calc_sum:
                 sa.total_score = calc_sum
                 db.commit()
 
         print("\n" + "="*60)
-        print("🎯 ARCHERY SCORING SYSTEM — SEED DATA INITIALIZED")
+        print("[+] ARCHERY SCORING SYSTEM -- SEED DATA INITIALIZED")
         print("="*60)
-        print(f"   👥 Users: {len(users)} (Admin: admin / admin123!, Scorer: scorer / scorer123!)")
-        print(f"   🏆 Concurrent Tournaments: {len(tournaments)}")
-        print(f"   🎯 Active Sessions: {len(sessions)}")
-        print(f"   🏹 Registered Archers: {len(session_archers)}")
-        print(f"   📊 Arrow Impact Scores: {len(scores)}")
-        print(f"   📹 Cameras Assigned: {len(camera_assignments)}")
+        print(f"   Users: {len(users)} (Admin: admin / admin123!, Scorer: scorer / scorer123!)")
+        print(f"   Realistic Tournaments: {len(tournaments)}")
+        print(f"   Active & Completed Sessions: {len(sessions)}")
+        print(f"   Registered Archers: {len(session_archers)}")
+        print(f"   Arrow Impact Scores: {len(scores)}")
+        print(f"   Cameras Assigned: {len(camera_assignments)}")
         print("="*60 + "\n")
 
     except Exception as e:

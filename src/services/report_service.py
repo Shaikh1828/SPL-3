@@ -512,6 +512,8 @@ class ReportService:
             elements.append(Spacer(1, 0.1 * inch))
 
             leaderboard_data = [["Rank", "Archer Name", "Lane", "Round", "Total Score"]]
+            if not archers:
+                leaderboard_data.append(["-", "No archers registered yet", "-", "-", "-"])
             for rank, archer in enumerate(archers, 1):
                 leaderboard_data.append([
                     str(rank),
@@ -589,6 +591,8 @@ class ReportService:
             elements.append(Spacer(1, 0.1 * inch))
 
             t_table_data = [["Rank", "Competitor Name", "Total Score", "Avg Arrow", "10s", "Xs"]]
+            if not t_leaderboard:
+                t_table_data.append(["-", "No scores recorded yet", "-", "-", "-", "-"])
             for item in t_leaderboard:
                 t_table_data.append([
                     str(item["rank"]),
@@ -621,7 +625,6 @@ class ReportService:
                 f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}",
             ]
             return ReportService._build_minimal_pdf(f"Tournament Report - {tourney.name}", tourney.name, lines)
-            raise
 
     @staticmethod
     def _generate_csv_report(db: Session, session_id: int) -> bytes:

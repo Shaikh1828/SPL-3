@@ -81,13 +81,11 @@ class LeaderboardService:
         archers = (
             db.query(SessionArcher)
             .filter(SessionArcher.session_id == session_id)
-            .order_by(SessionArcher.total_score.desc(), SessionArcher.archer_name.asc())
-            .limit(limit)
             .all()
         )
 
-        leaderboard = []
-        for rank, archer in enumerate(archers, 1):
+        raw_items = []
+        for archer in archers:
             scores = (
                 db.query(Score)
                 .filter(Score.session_archer_id == archer.id)
@@ -100,9 +98,8 @@ class LeaderboardService:
             avg_score = round(archer.total_score / arrows_count, 2) if arrows_count > 0 else 0.0
             recent_arrows = [s.points for s in scores[:6]]
 
-            leaderboard.append(
+            raw_items.append(
                 {
-                    "rank": rank,
                     "archer_id": archer.archer_id,
                     "archer_name": archer.archer_name,
                     "total_score": archer.total_score,
@@ -116,6 +113,14 @@ class LeaderboardService:
                     "recent_arrows": recent_arrows,
                 }
             )
+
+        # World Archery standard tie-break sorting: total_score DESC, 10s DESC, Xs DESC, archer_name ASC
+        raw_items.sort(key=lambda x: (-x["total_score"], -x["tens_count"], -x["xs_count"], x["archer_name"]))
+
+        leaderboard = []
+        for rank, item in enumerate(raw_items[:limit], 1):
+            item["rank"] = rank
+            leaderboard.append(item)
 
         return leaderboard
 
@@ -199,8 +204,8 @@ class LeaderboardService:
                 else 0.0
             )
 
-        # Sort primarily by total_score DESC, then tens_count DESC, then archer_name ASC
-        results.sort(key=lambda x: (-x["total_score"], -x["tens_count"], x["archer_name"]))
+        # Sort primarily by total_score DESC, then tens_count DESC, then xs_count DESC, then archer_name ASC
+        results.sort(key=lambda x: (-x["total_score"], -x["tens_count"], -x["xs_count"], x["archer_name"]))
 
         # 5. Apply ranks and slice limit
         leaderboard = []

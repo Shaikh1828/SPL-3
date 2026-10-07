@@ -22,6 +22,7 @@ from src.models.user import User
 from src.models.tournament import Tournament, Session
 from src.models.scoring import SessionArcher
 from src.events import publish_event, EventType
+from src.cache import invalidate_leaderboard_cache
 
 logger = structlog.get_logger()
 
@@ -231,7 +232,12 @@ async def update_session_status(
         if new_status == "active":
             session.start_time = datetime.utcnow()
         elif new_status == "completed":
-            session.end_time = datetime.utcnow()
+            now = datetime.utcnow()
+            session.end_time = now
+            session.completed_at = now
+            invalidate_leaderboard_cache(session_id)
+        elif new_status == "paused":
+            invalidate_leaderboard_cache(session_id)
 
         db.commit()
         db.refresh(session)
@@ -240,6 +246,10 @@ async def update_session_status(
         publish_event(
             EventType.SESSION_STATE_CHANGED,
             {"session_id": session_id, "old_status": old_status, "new_status": new_status},
+        )
+        publish_event(
+            EventType.LEADERBOARD_UPDATED,
+            {"session_id": session_id, "status": new_status},
         )
 
         logger.info("session_status_updated", session_id=session_id, new_status=new_status)
@@ -387,7 +397,7 @@ async def remove_archer_from_session(
     session_id: int,
     session_archer_id: int,
     db: SQLSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_session_manager),
 ):
     """Remove an archer from a session."""
     try:
@@ -403,6 +413,11 @@ async def remove_archer_from_session(
             )
         db.delete(session_archer)
         db.commit()
+        invalidate_leaderboard_cache(session_id)
+        publish_event(
+            EventType.LEADERBOARD_UPDATED,
+            {"session_id": session_id, "action": "archer_removed"},
+        )
         logger.info("archer_removed_from_session", session_id=session_id, session_archer_id=session_archer_id)
         return {"success": True, "message": "Archer successfully removed from session"}
     except HTTPException:
