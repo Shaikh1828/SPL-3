@@ -4,6 +4,7 @@ import {
   Crosshair, Award, ShieldCheck, RefreshCw, Download, User, Check, Zap
 } from 'lucide-react'
 import { poseApi } from '@/api/pose'
+import { useCameraStream } from '@/context/CameraStreamContext'
 import type {
   PostureSampleItem,
   PostureImageAnalysisResponse,
@@ -31,13 +32,30 @@ export default function ArcherPostureImageSection({
   const [viewMode, setViewMode] = useState<'annotated' | 'raw' | 'split'>('annotated')
   const [customImageUri, setCustomImageUri] = useState<string | null>(null)
 
-  // ─── Camera Snapshot State ────────────────────────────────────────────────
+  // ─── Camera Stream Context & State ────────────────────────────────────────
+  const cameraStream = useCameraStream()
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null)
+  const localStreamRef = useRef<MediaStream | null>(null)
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false)
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([])
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('')
-  const cameraVideoRef = useRef<HTMLVideoElement>(null)
+  const cameraVideoRef = useRef<HTMLVideoElement | null>(null)
   const cameraStreamRef = useRef<MediaStream | null>(null)
   const fileUploadInputRef = useRef<HTMLInputElement>(null)
+
+  // Unified stream: prioritize active stream from CameraStreamContext (OBS bridge), then local stream
+  const effectiveStream = cameraStream.activeStream || localStream || cameraStreamRef.current
+  const isStreamLive = !!effectiveStream && (cameraStream.isStreaming || isCameraActive)
+
+  const availableDevices = cameraStream.devices.length > 0
+    ? cameraStream.devices
+    : videoDevices.map((d, i) => ({
+        deviceId: d.deviceId,
+        label: d.label || `Camera ${i + 1}`,
+        isObs: d.label.toLowerCase().includes('obs') || d.label.toLowerCase().includes('virtual')
+      }))
+
+  const currentDeviceId = cameraStream.selectedDeviceId || selectedDeviceId
 
   // ─── Mount: Load Benchmark Samples & Cameras ──────────────────────────────
   useEffect(() => {
@@ -49,10 +67,33 @@ export default function ArcherPostureImageSection({
     }
   }, [])
 
+  // Auto-select OBS Virtual Camera if present
+  useEffect(() => {
+    if (availableDevices.length > 0 && !currentDeviceId) {
+      const obs = availableDevices.find(
+        (d) => d.isObs || d.label.toLowerCase().includes('obs') || d.label.toLowerCase().includes('virtual')
+      )
+      const targetId = obs ? obs.deviceId : availableDevices[0].deviceId
+      setSelectedDeviceId(targetId)
+      cameraStream.setSelectedDeviceId(targetId)
+    }
+  }, [availableDevices, currentDeviceId])
+
+  // Attach effectiveStream to video element whenever stream or active state changes
+  useEffect(() => {
+    if (cameraVideoRef.current && effectiveStream) {
+      if (cameraVideoRef.current.srcObject !== effectiveStream) {
+        cameraVideoRef.current.srcObject = effectiveStream
+      }
+      cameraVideoRef.current.play().catch((err) => {
+        console.warn('Video auto-play warning:', err)
+      })
+    }
+  }, [effectiveStream, isStreamLive, isCameraActive])
+
   const enumerateCameras = async () => {
     try {
       if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
-        // Quick permission prompt so labels (e.g. OBS Virtual Camera) become readable
         try {
           const tempStream = await navigator.mediaDevices.getUserMedia({ video: true })
           tempStream.getTracks().forEach((t) => t.stop())
@@ -62,13 +103,13 @@ export default function ArcherPostureImageSection({
         const devs = await navigator.mediaDevices.enumerateDevices()
         const videoInputs = devs.filter((d) => d.kind === 'videoinput')
         setVideoDevices(videoInputs)
-        // Auto-select OBS Virtual Camera if present
         if (videoInputs.length > 0) {
           const obs = videoInputs.find(d => 
             d.label.toLowerCase().includes('obs') || d.label.toLowerCase().includes('virtual')
           )
           if (obs) {
             setSelectedDeviceId(obs.deviceId)
+            cameraStream.setSelectedDeviceId(obs.deviceId)
           } else if (!selectedDeviceId) {
             setSelectedDeviceId(videoInputs[0].deviceId)
           }
@@ -84,7 +125,6 @@ export default function ArcherPostureImageSection({
       const res = await poseApi.getPostureSamples()
       if (res.success && res.samples && res.samples.length > 0) {
         setSamples(res.samples)
-        // Automatically analyze sample with great form e.g. images (9).jpg or first
         const initialSample = res.samples.find(s => s.filename.includes('(9)')) || res.samples[0]
         if (initialSample) {
           analyzeSample(initialSample.filename)
@@ -149,7 +189,25 @@ export default function ArcherPostureImageSection({
 
   // ─── Live Camera Control & Snapshot ───────────────────────────────────────
   const startCamera = async (overrideDeviceId?: string) => {
-    const devId = overrideDeviceId || selectedDeviceId
+    const devId = overrideDeviceId || currentDeviceId
+    // 1. Try starting with global CameraStreamContext first so it coordinates across app
+    try {
+      if (cameraStream.startStream) {
+        const stream = await cameraStream.startStream(devId, selectedLane?.lane_number || 1)
+        if (stream) {
+          setIsCameraActive(true)
+          if (cameraVideoRef.current) {
+            cameraVideoRef.current.srcObject = stream
+            cameraVideoRef.current.play().catch(() => {})
+          }
+          return
+        }
+      }
+    } catch (err) {
+      console.warn('CameraStreamContext startStream error, attempting local getUserMedia:', err)
+    }
+
+    // 2. Fallback to direct navigator.mediaDevices.getUserMedia
     try {
       const constraints: MediaStreamConstraints = {
         video: devId
@@ -158,30 +216,45 @@ export default function ArcherPostureImageSection({
         audio: false
       }
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      localStreamRef.current = stream
+      setLocalStream(stream)
       cameraStreamRef.current = stream
+      setIsCameraActive(true)
       if (cameraVideoRef.current) {
         cameraVideoRef.current.srcObject = stream
-        cameraVideoRef.current.play()
+        cameraVideoRef.current.play().catch(() => {})
       }
-      setIsCameraActive(true)
-      const dev = videoDevices.find(d => d.deviceId === devId)
+      const dev = availableDevices.find(d => d.deviceId === devId)
       toast.success(dev?.label ? `Connected: ${dev.label}` : 'Camera stream connected')
-    } catch {
-      toast.error('Unable to access camera. Check device permissions.')
+    } catch (err: any) {
+      console.error('Camera connection error:', err)
+      toast.error('Unable to access camera. Check device permissions or OBS Virtual Camera.')
     }
   }
 
   const stopCamera = () => {
+    if (cameraStream.isStreaming) {
+      cameraStream.stopStream()
+    }
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop())
+      localStreamRef.current = null
+    }
     if (cameraStreamRef.current) {
       cameraStreamRef.current.getTracks().forEach((track) => track.stop())
       cameraStreamRef.current = null
+    }
+    setLocalStream(null)
+    if (cameraVideoRef.current) {
+      cameraVideoRef.current.srcObject = null
     }
     setIsCameraActive(false)
   }
 
   const handleDeviceChange = async (newDeviceId: string) => {
     setSelectedDeviceId(newDeviceId)
-    if (isCameraActive) {
+    cameraStream.setSelectedDeviceId(newDeviceId)
+    if (isStreamLive) {
       stopCamera()
       setTimeout(() => {
         startCamera(newDeviceId)
@@ -193,11 +266,18 @@ export default function ArcherPostureImageSection({
     const laneNum = selectedLane?.lane_number || 1
     try {
       setIsAnalyzing(true)
+      if (cameraStream.isStreaming) {
+        await cameraStream.pushCurrentFrame(laneNum).catch(() => {})
+      }
       setSelectedSample(`lane_${laneNum}_assigned_camera.jpg`)
       const res = await poseApi.analyzeLaneCamera(laneNum)
       setAnalysis(res)
       if (res.annotated_image_base64) {
-        setCustomImageUri(`data:image/jpeg;base64,${res.annotated_image_base64}`)
+        setCustomImageUri(
+          res.annotated_image_base64.startsWith('data:')
+            ? res.annotated_image_base64
+            : `data:image/jpeg;base64,${res.annotated_image_base64}`
+        )
       }
       toast.success(`Lane ${laneNum} Camera Evaluated: Score ${res.prediction.score_display} (${res.posture_accuracy.overall_accuracy_pct}%)`)
     } catch (err: any) {
@@ -208,31 +288,52 @@ export default function ArcherPostureImageSection({
   }
 
   const captureCameraSnapshot = async () => {
+    let base64Data: string | null = null
     const video = cameraVideoRef.current
-    if (!video || video.videoWidth === 0) {
-      toast.error('Camera stream is not active')
+
+    // Extract frame from live video element
+    if (video && video.videoWidth > 0 && video.videoHeight > 0) {
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = video.videoWidth
+        canvas.height = video.videoHeight
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+          base64Data = canvas.toDataURL('image/jpeg', 0.95)
+        }
+      } catch (err) {
+        console.warn('Canvas frame capture warning:', err)
+      }
+    }
+
+    // Fallback to cameraStream context snapshot
+    if (!base64Data && cameraStream.isStreaming) {
+      base64Data = cameraStream.captureFrameBase64()
+    }
+
+    if (!base64Data) {
+      toast.error('Camera stream is not active or video is not ready yet')
       return
     }
 
     try {
       setIsAnalyzing(true)
-      const canvas = document.createElement('canvas')
-      canvas.width = video.videoWidth
-      canvas.height = video.videoHeight
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-      ctx.drawImage(video, 0, 0)
-      const base64Data = canvas.toDataURL('image/jpeg', 0.92)
+      const laneNum = selectedLane?.lane_number || 1
+      if (cameraStream.isStreaming) {
+        cameraStream.pushCurrentFrame(laneNum).catch(() => {})
+      }
+
       setCustomImageUri(base64Data)
-      setSelectedSample(`lane_${selectedLane?.lane_number || 1}_cam_frame.jpg`)
+      setSelectedSample(`lane_${laneNum}_cam_frame.jpg`)
 
       const res = await poseApi.analyzeCameraSnapshot({
         image_base64: base64Data,
-        filename: `snapshot_lane_${selectedLane?.lane_number || 1}_${Date.now()}.jpg`,
-        lane_number: selectedLane?.lane_number,
+        filename: `snapshot_lane_${laneNum}_${Date.now()}.jpg`,
+        lane_number: laneNum,
         archer_id: selectedLane?.archer.id,
         archer_name: selectedLane?.archer.name,
-        camera_source: selectedLane?.camera.name || 'Assigned Lane Camera'
+        camera_source: selectedLane?.camera.name || 'OBS Virtual Camera'
       })
 
       setAnalysis(res)
@@ -485,33 +586,33 @@ export default function ArcherPostureImageSection({
 
             <div className="flex flex-wrap items-center gap-2">
               <select
-                value={selectedDeviceId}
+                value={currentDeviceId}
                 onChange={(e) => handleDeviceChange(e.target.value)}
                 className="bg-navy-950 border border-gold-500/40 rounded-xl px-3 py-2 text-xs font-semibold text-slate-100 focus:outline-none focus:border-gold-400 max-w-[260px] truncate"
               >
-                {videoDevices.map((d, i) => {
-                  const isObs = d.label.toLowerCase().includes('obs') || d.label.toLowerCase().includes('virtual')
+                {availableDevices.map((d, i) => {
+                  const isObs = (d as any).isObs || d.label.toLowerCase().includes('obs') || d.label.toLowerCase().includes('virtual')
                   return (
                     <option key={d.deviceId || i} value={d.deviceId}>
                       {isObs ? '🎥 [OBS Virtual Camera] ' : '📹 '} {d.label || `Camera ${i + 1}`}
                     </option>
                   )
                 })}
-                {videoDevices.length === 0 && (
+                {availableDevices.length === 0 && (
                   <option value="">🎥 OBS Virtual Camera (Auto-Detect)</option>
                 )}
               </select>
 
               <button
-                onClick={isCameraActive ? stopCamera : () => startCamera()}
+                onClick={isStreamLive ? stopCamera : () => startCamera()}
                 className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 ${
-                  isCameraActive
+                  isStreamLive
                     ? 'bg-rose-600 hover:bg-rose-500 text-white'
                     : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                 }`}
               >
                 <Camera className="w-3.5 h-3.5" />
-                {isCameraActive ? 'Disconnect' : 'Connect Camera'}
+                {isStreamLive ? 'Disconnect' : 'Connect Camera'}
               </button>
 
               <button
@@ -526,15 +627,37 @@ export default function ArcherPostureImageSection({
             </div>
           </div>
 
-          <div className="relative aspect-video max-h-[460px] bg-black rounded-2xl overflow-hidden flex items-center justify-center border border-navy-800">
-            {isCameraActive ? (
-              <video
-                ref={cameraVideoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-contain"
-              />
+          <div className="relative aspect-video max-h-[460px] bg-black rounded-2xl overflow-hidden flex items-center justify-center border border-navy-800 shadow-2xl">
+            {isStreamLive ? (
+              <>
+                <video
+                  ref={(node) => {
+                    cameraVideoRef.current = node
+                    if (node && effectiveStream && node.srcObject !== effectiveStream) {
+                      node.srcObject = effectiveStream
+                      node.play().catch(() => {})
+                    }
+                  }}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-contain bg-black"
+                />
+                <div className="absolute top-3 left-3 bg-navy-950/85 backdrop-blur-sm border border-emerald-500/40 text-emerald-300 text-xs font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5 shadow z-10">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  LIVE STREAM ACTIVE {cameraStream.isStreaming ? '(OBS STREAM BRIDGE)' : ''}
+                </div>
+                <div className="absolute bottom-4 inset-x-0 flex justify-center z-20">
+                  <button
+                    onClick={captureCameraSnapshot}
+                    disabled={isAnalyzing}
+                    className="px-6 py-3 bg-gradient-to-r from-gold-500 to-amber-500 hover:from-gold-400 hover:to-amber-400 text-navy-950 font-black text-sm rounded-2xl shadow-2xl flex items-center gap-2 transition-transform active:scale-95 disabled:opacity-50"
+                  >
+                    <Camera className="w-5 h-5" />
+                    Capture Snapshot & Predict Form
+                  </button>
+                </div>
+              </>
             ) : (
               <div className="text-center p-8 space-y-3">
                 <Camera className="w-12 h-12 text-slate-600 mx-auto" />
@@ -546,19 +669,6 @@ export default function ArcherPostureImageSection({
                   className="px-4 py-2 bg-navy-800 hover:bg-navy-700 border border-navy-700 rounded-xl text-xs font-bold text-slate-200"
                 >
                   Start Camera Feed
-                </button>
-              </div>
-            )}
-
-            {isCameraActive && (
-              <div className="absolute bottom-4 inset-x-0 flex justify-center z-20">
-                <button
-                  onClick={captureCameraSnapshot}
-                  disabled={isAnalyzing}
-                  className="px-6 py-3 bg-gradient-to-r from-gold-500 to-amber-500 hover:from-gold-400 hover:to-amber-400 text-navy-950 font-black text-sm rounded-2xl shadow-2xl flex items-center gap-2 transition-transform active:scale-95 disabled:opacity-50"
-                >
-                  <Camera className="w-5 h-5" />
-                  Capture Snapshot & Predict Form
                 </button>
               </div>
             )}
@@ -636,7 +746,11 @@ export default function ArcherPostureImageSection({
               <div className="p-3 bg-black flex items-center justify-center min-h-[380px]">
                 {viewMode === 'annotated' && (
                   <img
-                    src={analysis.annotated_image_base64}
+                    src={
+                      analysis.annotated_image_base64?.startsWith('data:')
+                        ? analysis.annotated_image_base64
+                        : `data:image/jpeg;base64,${analysis.annotated_image_base64}`
+                    }
                     alt="Annotated Pose"
                     className="max-h-[520px] w-auto object-contain rounded-lg shadow-lg"
                   />
@@ -646,7 +760,11 @@ export default function ArcherPostureImageSection({
                   <img
                     src={
                       customImageUri ||
-                      (selectedSample ? poseApi.getPostureSampleUrl(selectedSample) : analysis.annotated_image_base64)
+                      (selectedSample
+                        ? poseApi.getPostureSampleUrl(selectedSample)
+                        : analysis.annotated_image_base64?.startsWith('data:')
+                        ? analysis.annotated_image_base64
+                        : `data:image/jpeg;base64,${analysis.annotated_image_base64}`)
                     }
                     alt="Original Form"
                     className="max-h-[520px] w-auto object-contain rounded-lg shadow-lg"
@@ -659,7 +777,11 @@ export default function ArcherPostureImageSection({
                       <img
                         src={
                           customImageUri ||
-                          (selectedSample ? poseApi.getPostureSampleUrl(selectedSample) : analysis.annotated_image_base64)
+                          (selectedSample
+                            ? poseApi.getPostureSampleUrl(selectedSample)
+                            : analysis.annotated_image_base64?.startsWith('data:')
+                            ? analysis.annotated_image_base64
+                            : `data:image/jpeg;base64,${analysis.annotated_image_base64}`)
                         }
                         alt="Raw"
                         className="w-full h-auto object-contain rounded-lg"
@@ -670,7 +792,11 @@ export default function ArcherPostureImageSection({
                     </div>
                     <div className="relative">
                       <img
-                        src={analysis.annotated_image_base64}
+                        src={
+                          analysis.annotated_image_base64?.startsWith('data:')
+                            ? analysis.annotated_image_base64
+                            : `data:image/jpeg;base64,${analysis.annotated_image_base64}`
+                        }
                         alt="AI Annotated"
                         className="w-full h-auto object-contain rounded-lg"
                       />

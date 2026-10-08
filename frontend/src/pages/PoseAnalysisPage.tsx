@@ -110,6 +110,16 @@ export default function PoseAnalysisPage() {
     }
   }, [])
 
+  // Auto-attach live webcam stream to video element on mount/activation
+  useEffect(() => {
+    if (webcamVideoRef.current && webcamStreamRef.current && isWebcamActive) {
+      if (webcamVideoRef.current.srcObject !== webcamStreamRef.current) {
+        webcamVideoRef.current.srcObject = webcamStreamRef.current
+        webcamVideoRef.current.play().catch(() => {})
+      }
+    }
+  }, [isWebcamActive])
+
   // Enumerate hardware cameras (Webcams, USB capture, OBS)
   const enumerateWebcamDevices = async () => {
     try {
@@ -1035,7 +1045,13 @@ export default function PoseAnalysisPage() {
                 >
                   {isWebcamActive ? (
                     <video
-                      ref={webcamVideoRef}
+                      ref={(node) => {
+                        webcamVideoRef.current = node
+                        if (node && webcamStreamRef.current && node.srcObject !== webcamStreamRef.current) {
+                          node.srcObject = webcamStreamRef.current
+                          node.play().catch(() => {})
+                        }
+                      }}
                       autoPlay
                       playsInline
                       muted
