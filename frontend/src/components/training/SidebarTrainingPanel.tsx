@@ -47,6 +47,7 @@ export function SidebarTrainingPanel({ collapsed }: SidebarTrainingPanelProps) {
 
   const [showLogs, setShowLogs] = useState(false)
   const [showFlyout, setShowFlyout] = useState(false)
+  const [isMinimized, setIsMinimized] = useState(true)
 
   // Start polling when mounted
   useEffect(() => {
@@ -173,62 +174,97 @@ export function SidebarTrainingPanel({ collapsed }: SidebarTrainingPanelProps) {
     )
   }
 
-  // Expanded View (Full elegant panel embedded in left nav bar)
+  // Expanded View (Full elegant panel embedded in left nav bar with collapsible minimization)
   return (
-    <div className="px-3 py-3 border-t border-navy-700/80">
-      <div className="bg-gradient-to-b from-navy-800/90 to-navy-900/90 border border-gold-500/20 hover:border-gold-500/35 rounded-xl p-3 shadow-lg relative overflow-hidden transition-all duration-300">
+    <div className="px-3 py-2 border-t border-navy-700/80">
+      <div className="bg-gradient-to-b from-navy-800/90 to-navy-900/90 border border-gold-500/20 hover:border-gold-500/35 rounded-xl p-2.5 shadow-lg relative overflow-hidden transition-all duration-300">
         {/* Glow Accent */}
         <div className="absolute top-0 right-0 w-24 h-24 bg-gold-500/5 rounded-full blur-xl pointer-events-none" />
 
-        {/* Panel Header */}
-        <div className="flex items-center justify-between gap-1 mb-2">
+        {/* Panel Header (Click to toggle minimize) */}
+        <div
+          onClick={() => setIsMinimized(!isMinimized)}
+          className="flex items-center justify-between gap-1 cursor-pointer select-none group"
+          title={isMinimized ? 'Click to expand Auto-Train AI' : 'Click to minimize'}
+        >
           <div className="flex items-center gap-1.5 min-w-0">
             <div className="w-6 h-6 rounded-lg bg-gold-500/20 border border-gold-500/30 flex items-center justify-center flex-shrink-0">
               <BrainCircuit className={cn('w-3.5 h-3.5 text-gold-400', isRunning && 'animate-spin')} />
             </div>
-            <span className="text-xs font-bold text-slate-100 tracking-wide truncate">
+            <span className="text-xs font-bold text-slate-100 tracking-wide truncate group-hover:text-gold-300 transition-colors">
               Auto-Train AI
             </span>
           </div>
 
-          {/* Status Badge */}
-          <span
-            className={cn(
-              'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border flex-shrink-0',
-              isRunning
-                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
-                : isCompleted || weights_exist
-                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                : isFailed
-                ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
-                : 'bg-navy-700 text-slate-400 border-navy-600'
-            )}
-          >
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {/* Status Badge */}
             <span
               className={cn(
-                'w-1.5 h-1.5 rounded-full',
+                'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border flex-shrink-0',
                 isRunning
-                  ? 'bg-amber-400 animate-ping'
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
                   : isCompleted || weights_exist
-                  ? 'bg-emerald-400'
+                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
                   : isFailed
-                  ? 'bg-rose-400'
-                  : 'bg-slate-400'
+                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                  : 'bg-navy-700 text-slate-400 border-navy-600'
               )}
-            />
-            {isRunning ? 'Training' : weights_exist ? 'Ready' : 'Idle'}
-          </span>
+            >
+              <span
+                className={cn(
+                  'w-1.5 h-1.5 rounded-full',
+                  isRunning
+                    ? 'bg-amber-400 animate-ping'
+                    : isCompleted || weights_exist
+                    ? 'bg-emerald-400'
+                    : isFailed
+                    ? 'bg-rose-400'
+                    : 'bg-slate-400'
+                )}
+              />
+              {isRunning ? 'Training' : weights_exist ? 'Ready' : 'Idle'}
+            </span>
+
+            <button
+              type="button"
+              className="p-0.5 text-slate-400 hover:text-slate-200 rounded transition-colors"
+            >
+              {isMinimized ? (
+                <ChevronDown className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronUp className="w-3.5 h-3.5" />
+              )}
+            </button>
+          </div>
         </div>
 
-        {/* Dataset Summary */}
-        <div className="flex items-center justify-between text-[11px] text-slate-400 bg-navy-950/60 rounded-lg px-2 py-1 mb-2.5 border border-navy-700/50">
-          <div className="flex items-center gap-1 truncate">
-            <Database className="w-3 h-3 text-gold-400 flex-shrink-0" />
-            <span className="truncate">{dataset?.train_images || 353} Train Imgs</span>
+        {/* Minimized Progress Bar if running */}
+        {isMinimized && isRunning && (
+          <div className="mt-2 space-y-1">
+            <div className="flex justify-between text-[10px] text-slate-300">
+              <span className="text-gold-400 font-semibold">Epoch {current_epoch}/{total_epochs}</span>
+              <span className="font-mono">{progress}%</span>
+            </div>
+            <div className="w-full bg-navy-950 rounded-full h-1.5 overflow-hidden border border-navy-700">
+              <div
+                className="bg-gradient-to-r from-gold-500 to-amber-400 h-full rounded-full transition-all duration-300"
+                style={{ width: `${Math.max(5, progress)}%` }}
+              />
+            </div>
           </div>
-          <span className="text-slate-500">·</span>
-          <span className="text-slate-300 font-medium">{dataset?.classes?.length || 6} Classes</span>
-        </div>
+        )}
+
+        {!isMinimized && (
+          <div className="mt-2.5 space-y-2.5">
+            {/* Dataset Summary */}
+            <div className="flex items-center justify-between text-[11px] text-slate-400 bg-navy-950/60 rounded-lg px-2 py-1 border border-navy-700/50">
+              <div className="flex items-center gap-1 truncate">
+                <Database className="w-3 h-3 text-gold-400 flex-shrink-0" />
+                <span className="truncate">{dataset?.train_images || 353} Train Imgs</span>
+              </div>
+              <span className="text-slate-500">·</span>
+              <span className="text-slate-300 font-medium">{dataset?.classes?.length || 6} Classes</span>
+            </div>
 
         {/* Training Action or Active Progress */}
         {isRunning ? (
@@ -380,17 +416,19 @@ export function SidebarTrainingPanel({ collapsed }: SidebarTrainingPanelProps) {
           </Link>
         </div>
 
-        {/* Inline Logs Viewer */}
-        {showLogs && (
-          <div className="mt-2 bg-navy-950 rounded-lg p-2 border border-navy-700 text-[10px] font-mono text-slate-300 max-h-32 overflow-y-auto space-y-1">
-            {logs.length === 0 ? (
-              <p className="text-slate-500 italic">No logs yet. Click 'Train Model' to start.</p>
-            ) : (
-              logs.slice(-8).map((log, idx) => (
-                <div key={idx} className="leading-tight text-slate-400 hover:text-slate-200 break-all">
-                  {log}
-                </div>
-              ))
+            {/* Inline Logs Viewer */}
+            {showLogs && (
+              <div className="mt-2 bg-navy-950 rounded-lg p-2 border border-navy-700 text-[10px] font-mono text-slate-300 max-h-32 overflow-y-auto space-y-1">
+                {logs.length === 0 ? (
+                  <p className="text-slate-500 italic">No logs yet. Click 'Train Model' to start.</p>
+                ) : (
+                  logs.slice(-8).map((log, idx) => (
+                    <div key={idx} className="leading-tight text-slate-400 hover:text-slate-200 break-all">
+                      {log}
+                    </div>
+                  ))
+                )}
+              </div>
             )}
           </div>
         )}

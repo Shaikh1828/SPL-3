@@ -19,6 +19,7 @@ import { ScoreDetailsModal } from '@/components/scores/ScoreDetailsModal'
 import { RapidScorePad } from '@/components/scores/RapidScorePad'
 import { ArcherScorecardMatrix } from '@/components/scores/ArcherScorecardMatrix'
 import { ScorerReviewStage } from '@/components/scores/ScorerReviewStage'
+import BatchScoringSection from '@/components/scoring/BatchScoringSection'
 import { useCameraStream } from '@/context/CameraStreamContext'
 import toast from 'react-hot-toast'
 import { cn, getConfidenceColor } from '@/lib/utils'
@@ -1110,6 +1111,11 @@ export default function ScoringPage() {
               }}
             />
           )}
+
+          {/* Integrated Batch Scoring Section */}
+          <div id="batch-scoring-section" className="pt-4">
+            <BatchScoringSection onScoreUpdated={loadSessionData} />
+          </div>
         </>
       )}
 

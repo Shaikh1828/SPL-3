@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react'
 import {
-  Camera, Upload, Sparkles, CheckCircle2, AlertTriangle,
-  Crosshair, Award, ShieldCheck, RefreshCw, Download, User, Check, Zap
+  Camera, Upload, CheckCircle2, AlertTriangle,
+  Crosshair, Award, ShieldCheck, RefreshCw, Download, User, Zap
 } from 'lucide-react'
 import { poseApi } from '@/api/pose'
 import { useCameraStream } from '@/context/CameraStreamContext'
 import type {
-  PostureSampleItem,
   PostureImageAnalysisResponse,
   RangeLaneArcherItem
 } from '@/types'
@@ -24,11 +23,10 @@ export default function ArcherPostureImageSection({
   onSelectLane
 }: ArcherPostureImageSectionProps) {
   // ─── Input & Analysis State ───────────────────────────────────────────────
-  const [samples, setSamples] = useState<PostureSampleItem[]>([])
   const [selectedSample, setSelectedSample] = useState<string | null>(null)
   const [analysis, setAnalysis] = useState<PostureImageAnalysisResponse | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false)
-  const [activeSource, setActiveSource] = useState<'benchmarks' | 'upload' | 'camera'>('benchmarks')
+  const [activeSource, setActiveSource] = useState<'camera' | 'upload'>('camera')
   const [viewMode, setViewMode] = useState<'annotated' | 'raw' | 'split'>('annotated')
   const [customImageUri, setCustomImageUri] = useState<string | null>(null)
 
@@ -57,9 +55,8 @@ export default function ArcherPostureImageSection({
 
   const currentDeviceId = cameraStream.selectedDeviceId || selectedDeviceId
 
-  // ─── Mount: Load Benchmark Samples & Cameras ──────────────────────────────
+  // ─── Mount: Load Cameras ──────────────────────────────────────────────────
   useEffect(() => {
-    loadPostureSamples()
     enumerateCameras()
 
     return () => {
@@ -117,41 +114,6 @@ export default function ArcherPostureImageSection({
       }
     } catch {
       // Browser permissions or device without camera
-    }
-  }
-
-  const loadPostureSamples = async () => {
-    try {
-      const res = await poseApi.getPostureSamples()
-      if (res.success && res.samples && res.samples.length > 0) {
-        setSamples(res.samples)
-        const initialSample = res.samples.find(s => s.filename.includes('(9)')) || res.samples[0]
-        if (initialSample) {
-          analyzeSample(initialSample.filename)
-        }
-      }
-    } catch {
-      toast.error('Failed to load posture sample gallery')
-    }
-  }
-
-  // ─── Analyze Benchmark Sample ─────────────────────────────────────────────
-  const analyzeSample = async (filename: string) => {
-    try {
-      setSelectedSample(filename)
-      setCustomImageUri(null)
-      setIsAnalyzing(true)
-      const res = await poseApi.analyzePostureSample(filename, {
-        lane_number: selectedLane?.lane_number,
-        archer_id: selectedLane?.archer.id,
-        archer_name: selectedLane?.archer.name
-      })
-      setAnalysis(res)
-      toast.success(`Form evaluated: Score ${res.prediction.score_display} (${res.posture_accuracy.overall_accuracy_pct}%)`)
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Posture analysis failed')
-    } finally {
-      setIsAnalyzing(false)
     }
   }
 
@@ -452,14 +414,14 @@ export default function ArcherPostureImageSection({
           {/* Input Source Modes */}
           <div className="flex items-center bg-navy-950 p-1 rounded-xl border border-navy-800 self-stretch lg:self-auto justify-center">
             <button
-              onClick={() => setActiveSource('benchmarks')}
+              onClick={() => setActiveSource('camera')}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                activeSource === 'benchmarks'
+                activeSource === 'camera'
                   ? 'bg-blue-600 text-white shadow-md'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5" /> 14 Benchmark Photos
+              <Camera className="w-3.5 h-3.5" /> Live Camera Feed
             </button>
             <button
               onClick={() => setActiveSource('upload')}
@@ -471,74 +433,9 @@ export default function ArcherPostureImageSection({
             >
               <Upload className="w-3.5 h-3.5" /> Upload Photo
             </button>
-            <button
-              onClick={() => setActiveSource('camera')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                activeSource === 'camera'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Camera className="w-3.5 h-3.5" /> Lane Camera Snapshot
-            </button>
           </div>
         </div>
       </div>
-
-      {/* ─── Source 1: Benchmark Posture Gallery (14 Images) ───────────────── */}
-      {activeSource === 'benchmarks' && (
-        <div className="bg-navy-900 border border-navy-700 rounded-2xl p-5 shadow-xl space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-gold-400" />
-              <h2 className="text-sm font-black text-slate-100 uppercase tracking-wider">
-                Tournament Archer Posture Benchmarks ({samples.length} Photos)
-              </h2>
-            </div>
-            <span className="text-xs text-slate-400">
-              Click any photo to instantly identify MediaPipe skeleton landmarks, form angles & predicted score
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5">
-            {samples.map((s, idx) => {
-              const isSelected = selectedSample === s.filename
-              const imgUrl = poseApi.getPostureSampleUrl(s.filename)
-              return (
-                <div
-                  key={s.filename}
-                  onClick={() => analyzeSample(s.filename)}
-                  className={`group relative rounded-xl overflow-hidden border cursor-pointer transition-all aspect-[4/3] bg-navy-950 ${
-                    isSelected
-                      ? 'border-gold-400 ring-2 ring-gold-400/30 scale-[1.03] shadow-lg shadow-gold-500/10'
-                      : 'border-navy-800 hover:border-navy-600 hover:scale-[1.01]'
-                  }`}
-                >
-                  <img
-                    src={imgUrl}
-                    alt={s.filename}
-                    className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                    loading="lazy"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-navy-950/90 via-navy-950/20 to-transparent flex flex-col justify-end p-2">
-                    <span className="text-[10px] font-bold text-slate-200 truncate">
-                      Sample #{idx + 1}
-                    </span>
-                    <span className="text-[9px] text-slate-400 truncate">
-                      {s.filename}
-                    </span>
-                  </div>
-                  {isSelected && (
-                    <div className="absolute top-1.5 right-1.5 bg-gold-500 text-navy-950 p-1 rounded-full shadow-md">
-                      <Check className="w-3 h-3 stroke-[3]" />
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
 
       {/* ─── Source 2: Upload Photo ───────────────────────────────────────── */}
       {activeSource === 'upload' && (
@@ -958,35 +855,35 @@ export default function ArcherPostureImageSection({
           <div className="lg:col-span-5 space-y-4">
             {/* Predicted Target Score Banner */}
             <div
-              className={`bg-gradient-to-br ${ringStyle.bg} bg-navy-900 border ${ringStyle.border} rounded-2xl p-6 shadow-2xl relative overflow-hidden`}
+              className={`bg-gradient-to-br ${ringStyle.bg} bg-navy-900 border ${ringStyle.border} rounded-2xl p-5 shadow-2xl relative overflow-hidden`}
             >
-              <div className="flex items-start justify-between">
-                <div>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
                     Predicted Olympic Score
                   </span>
-                  <div className="flex items-baseline gap-3 mt-1">
-                    <span className={`text-5xl font-black ${ringStyle.text} tracking-tight`}>
+                  <div className="flex items-baseline gap-2 mt-1">
+                    <span className={`text-4xl sm:text-5xl font-black ${ringStyle.text} tracking-tight`}>
                       {analysis.prediction.score_display}
                     </span>
-                    <span className="text-sm font-bold text-slate-400">
+                    <span className="text-sm font-bold text-slate-400 whitespace-nowrap">
                       / 10 Ring
                     </span>
                   </div>
-                  <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-black uppercase mt-2 border ${ringStyle.badge}`}>
+                  <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-black uppercase mt-2 border ${ringStyle.badge} whitespace-nowrap`}>
                     {analysis.prediction.score_category} Zone
                   </span>
                 </div>
 
                 {/* Score execution rating badge */}
-                <div className="text-right">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                <div className="text-right flex-shrink-0 bg-navy-950/60 px-3 py-2 rounded-xl border border-navy-800">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block whitespace-nowrap">
                     Execution Score
                   </span>
-                  <span className="text-2xl font-black text-slate-100 block">
+                  <span className="text-xl sm:text-2xl font-black text-slate-100 block whitespace-nowrap">
                     {analysis.prediction.execution_score_pct}%
                   </span>
-                  <span className="text-[10px] text-emerald-400 font-bold block mt-0.5">
+                  <span className="text-[10px] text-emerald-400 font-bold block mt-0.5 whitespace-nowrap">
                     Confidence: {(analysis.prediction.confidence * 100).toFixed(0)}%
                   </span>
                 </div>

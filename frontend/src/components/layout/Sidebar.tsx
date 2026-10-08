@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, Target, BarChart3, Camera, Users,
-  Trophy, Settings, ChevronLeft, ChevronRight, Crosshair, FolderOpen,
+  Trophy, Settings, ChevronLeft, ChevronRight, Crosshair,
   Activity, BrainCircuit
 } from 'lucide-react'
 import { useState } from 'react'
@@ -11,7 +11,6 @@ import { SidebarTrainingPanel } from '@/components/training/SidebarTrainingPanel
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/scoring', icon: Target, label: 'Scoring' },
-  { to: '/batch-testing', icon: FolderOpen, label: 'Batch Scorer' },
   { to: '/training', icon: BrainCircuit, label: 'Model Training' },
   { to: '/pose-analysis', icon: Crosshair, label: 'Pose Biomechanics' },
   { to: '/reports', icon: BarChart3, label: 'Reports' },

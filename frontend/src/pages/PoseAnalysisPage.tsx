@@ -901,11 +901,11 @@ export default function PoseAnalysisPage() {
           <div className="flex items-center gap-4">
             {/* Circular Gauge Ring */}
             <div
-              className="w-16 h-16 rounded-2xl flex flex-col items-center justify-center font-black text-navy-950 shadow-lg"
+              className="min-w-[76px] h-16 px-2.5 rounded-2xl flex flex-col items-center justify-center font-black text-navy-950 shadow-lg flex-shrink-0"
               style={{ backgroundColor: effectiveAccuracy.tier_color }}
             >
-              <span className="text-2xl leading-none">{effectiveAccuracy.overall_accuracy_pct}%</span>
-              <span className="text-[9px] uppercase font-bold tracking-wider mt-0.5">Accurate</span>
+              <span className="text-lg font-black leading-none whitespace-nowrap">{effectiveAccuracy.overall_accuracy_pct}%</span>
+              <span className="text-[9px] uppercase font-bold tracking-wider mt-1 whitespace-nowrap">Accurate</span>
             </div>
 
             <div>
