@@ -133,3 +133,96 @@ class TestPoseAPI:
         assert data["metrics"]["bow_arm_angle"] == 179.2
         assert data["posture_accuracy"]["overall_accuracy_pct"] >= 90.0
         assert data["predicted_score"] in [9, 10]
+
+    def test_list_posture_samples(self, test_client: TestClient):
+        """GET /api/pose/posture-samples returns the 14 benchmark posture photos."""
+        res = test_client.get("/api/pose/posture-samples")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["success"] is True
+        assert data["total"] == 14
+        assert len(data["samples"]) == 14
+        filenames = [s["filename"] for s in data["samples"]]
+        assert any("images" in f for f in filenames)
+
+    def test_get_posture_sample_image(self, test_client: TestClient):
+        """GET /api/pose/posture-samples/{filename} serves image binary."""
+        res = test_client.get("/api/pose/posture-samples/images%20(9).jpg")
+        assert res.status_code == 200
+        assert "image/jpeg" in res.headers.get("content-type", "")
+        assert len(res.content) > 1000
+
+    def test_get_posture_sample_not_found(self, test_client: TestClient):
+        """GET /api/pose/posture-samples/{filename} returns 404 for missing image."""
+        res = test_client.get("/api/pose/posture-samples/missing_archer_sample.jpg")
+        assert res.status_code == 404
+
+    def test_analyze_posture_sample(self, test_client: TestClient):
+        """POST /api/pose/posture-samples/{filename}/analyze runs MediaPipe pose landmarking."""
+        res = test_client.post(
+            "/api/pose/posture-samples/images%20(9).jpg/analyze",
+            params={"lane_number": 1, "archer_id": 101, "archer_name": "Rumman Shafi"}
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["success"] is True
+        assert len(data["landmarks"]) == 33
+        assert data["handedness"] in ["right", "left"]
+        assert "biomechanics" in data
+        assert "bow_arm_angle" in data["biomechanics"]
+        assert "draw_elbow_angle" in data["biomechanics"]
+        assert "torso_tilt_deg" in data["biomechanics"]
+        assert "prediction" in data
+        assert data["prediction"]["predicted_score"] in range(1, 11)
+        assert "target_coordinates" in data["prediction"]
+        assert "annotated_image_base64" in data
+        assert data["annotated_image_base64"].startswith("data:image/jpeg;base64,")
+
+    def test_analyze_uploaded_image(self, test_client: TestClient):
+        """POST /api/pose/analyze-image processes user uploaded archer posture photo."""
+        sample_path = os.path.join("Posture", "images (9).jpg")
+        with open(sample_path, "rb") as f:
+            file_bytes = f.read()
+
+        res = test_client.post(
+            "/api/pose/analyze-image",
+            files={"file": ("test_upload.jpg", file_bytes, "image/jpeg")},
+            data={"lane_number": "1", "archer_name": "Test Archer"}
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["success"] is True
+        assert len(data["landmarks"]) == 33
+        assert data["biomechanics"]["bow_arm_angle"] > 100
+        assert data["prediction"]["predicted_score"] >= 7
+
+    def test_analyze_uploaded_image_invalid_ext(self, test_client: TestClient):
+        """POST /api/pose/analyze-image rejects unsupported file types."""
+        res = test_client.post(
+            "/api/pose/analyze-image",
+            files={"file": ("bad_file.txt", b"plain text", "text/plain")}
+        )
+        assert res.status_code == 400
+        assert "Unsupported image format" in res.json()["detail"]
+
+    def test_analyze_camera_snapshot(self, test_client: TestClient):
+        """POST /api/pose/analyze-snapshot analyzes base64 captured frame from camera."""
+        import base64
+        sample_path = os.path.join("Posture", "images (9).jpg")
+        with open(sample_path, "rb") as f:
+            b64_str = base64.b64encode(f.read()).decode("utf-8")
+
+        payload = {
+            "image_base64": f"data:image/jpeg;base64,{b64_str}",
+            "filename": "camera_snapshot.jpg",
+            "lane_number": 2,
+            "archer_name": "Diya Siddique",
+            "camera_source": "Lane 2 Posture Cam"
+        }
+        res = test_client.post("/api/pose/analyze-snapshot", json=payload)
+        assert res.status_code == 200
+        data = res.json()
+        assert data["success"] is True
+        assert len(data["landmarks"]) == 33
+        assert data["posture_accuracy"]["overall_accuracy_pct"] > 50.0
+        assert "annotated_image_base64" in data

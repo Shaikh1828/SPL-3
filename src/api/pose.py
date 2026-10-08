@@ -8,7 +8,7 @@ import shutil
 import tempfile
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Request, Header
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 
 from src.services.pose_analysis_service import PoseAnalysisService
@@ -162,6 +162,122 @@ async def analyze_uploaded_video(
             shutil.rmtree(temp_dir, ignore_errors=True)
         except Exception:
             pass
+
+
+ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+
+@router.get("/posture-samples")
+async def list_posture_samples():
+    """List all available benchmark archer posture images from Posture/ folder."""
+    samples = pose_service.list_posture_sample_images()
+    return {"success": True, "total": len(samples), "samples": samples}
+
+
+@router.get("/posture-samples/{filename}")
+async def get_posture_sample_image(filename: str):
+    """Serve benchmark posture sample image binary."""
+    path = pose_service.get_posture_sample_path(filename)
+    if not path or not os.path.exists(path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Posture image '{filename}' not found")
+    media_type = "image/png" if filename.lower().endswith(".png") else "image/jpeg"
+    return FileResponse(path, media_type=media_type)
+
+
+@router.post("/posture-samples/{filename}/analyze")
+async def analyze_posture_sample(
+    filename: str,
+    lane_number: Optional[int] = None,
+    archer_id: Optional[int] = None,
+    archer_name: Optional[str] = None
+):
+    """Analyze a benchmark archer posture photo from Posture/ folder using MediaPipe pose detection."""
+    path = pose_service.get_posture_sample_path(filename)
+    if not path or not os.path.exists(path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Posture image '{filename}' not found")
+    with open(path, "rb") as f:
+        data = f.read()
+    archer_meta = {
+        "lane_number": lane_number,
+        "archer_id": archer_id,
+        "archer_name": archer_name,
+        "source": "posture_benchmark"
+    }
+    return pose_service.analyze_posture_image(data, filename=filename, archer_meta=archer_meta)
+
+
+@router.post("/analyze-image")
+async def analyze_uploaded_image(
+    file: UploadFile = File(...),
+    lane_number: Optional[int] = Form(None),
+    archer_id: Optional[int] = Form(None),
+    archer_name: Optional[str] = Form(None),
+    camera_source: Optional[str] = Form(None)
+):
+    """
+    Upload and analyze any archer shooting posture photo (from mobile, coach camera, or storage).
+    Identifies 33 MediaPipe pose landmarks, determines handedness, calculates biomechanical angles,
+    predicts Olympic target score and posture accuracy %, and returns annotated visualization.
+    """
+    filename = file.filename or "upload.jpg"
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported image format '{ext}'. Supported formats: {', '.join(sorted(ALLOWED_IMAGE_EXTENSIONS))}"
+        )
+    content = await file.read()
+    if len(content) > 15 * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Image exceeds 15MB size limit."
+        )
+    archer_meta = {
+        "lane_number": lane_number,
+        "archer_id": archer_id,
+        "archer_name": archer_name,
+        "camera_source": camera_source or "user_upload"
+    }
+    try:
+        return pose_service.analyze_posture_image(content, filename=filename, archer_meta=archer_meta)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Pose analysis failed: {str(e)}")
+
+
+class PostureSnapshotRequest(BaseModel):
+    image_base64: str = Field(..., description="Base64 encoded JPEG or PNG image")
+    filename: Optional[str] = Field(default="snapshot.jpg")
+    lane_number: Optional[int] = Field(default=None)
+    archer_id: Optional[int] = Field(default=None)
+    archer_name: Optional[str] = Field(default=None)
+    camera_source: Optional[str] = Field(default="assigned_lane_camera")
+
+
+@router.post("/analyze-snapshot")
+async def analyze_camera_snapshot(request: PostureSnapshotRequest):
+    """
+    Real-time snapshot analysis from assigned lane camera or live webcam frame.
+    Processes the raw frame base64 string, runs full landmark extraction,
+    and returns comprehensive biomechanics telemetry, score prediction, and skeleton overlay.
+    """
+    import base64
+    raw_b64 = request.image_base64
+    if "," in raw_b64:
+        raw_b64 = raw_b64.split(",", 1)[1]
+    try:
+        image_bytes = base64.b64decode(raw_b64)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid base64 image data")
+
+    archer_meta = {
+        "lane_number": request.lane_number,
+        "archer_id": request.archer_id,
+        "archer_name": request.archer_name,
+        "camera_source": request.camera_source
+    }
+    try:
+        return pose_service.analyze_posture_image(image_bytes, filename=request.filename, archer_meta=archer_meta)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Snapshot analysis failed: {str(e)}")
 
 
 @router.post("/predict-metrics")

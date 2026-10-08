@@ -11,6 +11,7 @@ import type {
   PostureAccuracyData, RangeLaneArcherItem, ArcherPostureRecord
 } from '@/types'
 import { toast } from 'react-hot-toast'
+import ArcherPostureImageSection from '@/components/pose/ArcherPostureImageSection'
 
 // MediaPipe 33 Landmark Connections for Anatomical Skeleton Overlay
 const POSE_CONNECTIONS: [number, number][] = [
@@ -53,7 +54,7 @@ export default function PoseAnalysisPage() {
   const [selectedVideoId, setSelectedVideoId] = useState<string>('gold_form_10')
   const [analysisData, setAnalysisData] = useState<PoseAnalysisResponse | null>(null)
   const [analyzing, setAnalyzing] = useState<boolean>(false)
-  const [activeTab, setActiveTab] = useState<'video' | 'simulator'>('video')
+  const [activeTab, setActiveTab] = useState<'image_posture' | 'video' | 'simulator'>('image_posture')
 
   // Dual-Camera Mode
   const [cameraLayout, setCameraLayout] = useState<'dual' | 'posture_only'>('dual')
@@ -658,11 +659,22 @@ export default function PoseAnalysisPage() {
 
           <div className="flex bg-navy-950 p-1 rounded-xl border border-navy-700">
             <button
+              onClick={() => setActiveTab('image_posture')}
+              id="tab-image-posture"
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'image_posture'
+                  ? 'bg-gold-500 text-navy-950 shadow-md font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Camera className="w-3.5 h-3.5" /> Archer Posture (Image & Cam)
+            </button>
+            <button
               onClick={() => setActiveTab('video')}
               id="tab-video-analysis"
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 activeTab === 'video'
-                  ? 'bg-gold-500 text-navy-950 shadow-md'
+                  ? 'bg-gold-500 text-navy-950 shadow-md font-bold'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -673,7 +685,7 @@ export default function PoseAnalysisPage() {
               id="tab-form-simulator"
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 activeTab === 'simulator'
-                  ? 'bg-gold-500 text-navy-950 shadow-md'
+                  ? 'bg-gold-500 text-navy-950 shadow-md font-bold'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -982,7 +994,13 @@ export default function PoseAnalysisPage() {
         </div>
       </div>
 
-      {activeTab === 'video' ? (
+      {activeTab === 'image_posture' ? (
+        <ArcherPostureImageSection
+          selectedLane={selectedLane}
+          lanes={lanes}
+          onSelectLane={(lane) => setSelectedLane(lane)}
+        />
+      ) : activeTab === 'video' ? (
         /* ─── Video Telemetry & Dual-Camera Analysis Grid ───────────────────── */
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column: Camera Viewers (7 Cols) */}

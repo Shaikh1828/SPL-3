@@ -1,5 +1,11 @@
 import { apiClient } from './client'
-import type { SampleVideoItem, PoseAnalysisResponse } from '@/types'
+import type {
+  SampleVideoItem,
+  PoseAnalysisResponse,
+  PostureSampleItem,
+  PostureImageAnalysisResponse,
+  PostureSnapshotRequest
+} from '@/types'
 
 export const poseApi = {
   getSampleVideos: () =>
@@ -24,6 +30,40 @@ export const poseApi = {
           'Content-Type': 'multipart/form-data',
         },
       })
+      .then((r) => r.data),
+
+  // ─── Posture Benchmark Images & Camera Snapshots ─────────────────────────
+  getPostureSamples: () =>
+    apiClient
+      .get<{ success: boolean; total: number; samples: PostureSampleItem[] }>('/pose/posture-samples')
+      .then((r) => r.data),
+
+  getPostureSampleUrl: (filename: string) => `/api/pose/posture-samples/${encodeURIComponent(filename)}`,
+
+  analyzePostureSample: (
+    filename: string,
+    meta?: { lane_number?: number; archer_id?: number; archer_name?: string }
+  ) =>
+    apiClient
+      .post<PostureImageAnalysisResponse>(
+        `/pose/posture-samples/${encodeURIComponent(filename)}/analyze`,
+        null,
+        { params: meta }
+      )
+      .then((r) => r.data),
+
+  analyzeUploadedImage: (formData: FormData) =>
+    apiClient
+      .post<PostureImageAnalysisResponse>('/pose/analyze-image', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      })
+      .then((r) => r.data),
+
+  analyzeCameraSnapshot: (data: PostureSnapshotRequest) =>
+    apiClient
+      .post<PostureImageAnalysisResponse>('/pose/analyze-snapshot', data)
       .then((r) => r.data),
 
   predictMetrics: (metrics: {

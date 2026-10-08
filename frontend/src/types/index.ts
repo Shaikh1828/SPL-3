@@ -548,6 +548,8 @@ export interface CoachingDiagnostic {
   value: string
   target: string
   message: string
+  severity?: string
+  rule_id?: string
 }
 
 export interface PostureAccuracyComponents {
@@ -703,4 +705,71 @@ export interface ArcherPostureRecord {
   bow_arm_angle: number
   draw_elbow_angle: number
   notes?: string
+}
+
+export interface PostureSampleItem {
+  filename: string
+  file_size_bytes: number
+  url: string
+}
+
+export interface PostureImageBiomechanics {
+  bow_arm_angle: number
+  bow_arm_ideal_range: string
+  bow_arm_status: 'OPTIMAL' | 'ACCEPTABLE' | 'UNDER_EXTENDED'
+  draw_elbow_angle: number
+  draw_elbow_ideal_range: string
+  draw_elbow_status: 'OPTIMAL' | 'SLIGHT_DEVIATION' | 'FAULT'
+  torso_tilt_deg: number
+  torso_ideal_range: string
+  shoulder_tilt_deg: number
+  anchor_hold_jitter_px: number
+}
+
+export interface PostureImagePrediction {
+  predicted_score: number
+  score_display: string
+  score_category: string
+  zone_description: string
+  execution_score_pct: number
+  confidence: number
+  target_coordinates: { x: number; y: number }
+}
+
+export interface PostureImageAnalysisResponse {
+  success: boolean
+  message?: string
+  filename: string
+  resolution: { width: number; height: number }
+  handedness: 'right' | 'left'
+  handedness_label: string
+  landmarks: Array<{
+    id: number
+    x: number
+    y: number
+    z: number
+    visibility: number
+  }>
+  biomechanics: PostureImageBiomechanics
+  prediction: PostureImagePrediction
+  posture_accuracy: PostureAccuracyData
+  diagnostics: CoachingDiagnostic[]
+  coaching_feedback: string[]
+  annotated_image_base64: string
+  archer_meta?: {
+    lane_number?: number
+    archer_id?: number
+    archer_name?: string
+    camera_source?: string
+    source?: string
+  }
+}
+
+export interface PostureSnapshotRequest {
+  image_base64: string
+  filename?: string
+  lane_number?: number
+  archer_id?: number
+  archer_name?: string
+  camera_source?: string
 }

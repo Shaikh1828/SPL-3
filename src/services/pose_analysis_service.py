@@ -8,6 +8,8 @@ import os
 import json
 import logging
 import math
+import base64
+import glob
 import numpy as np
 import cv2
 from typing import Dict, Any, List, Optional, Tuple
@@ -18,10 +20,13 @@ logger = logging.getLogger(__name__)
 class PoseAnalysisService:
     """Service for full-body archer kinematics analysis and score prediction."""
 
-    def __init__(self, sample_dir: str = "storage/sample_videos"):
+    def __init__(self, sample_dir: str = "storage/sample_videos", posture_dir: str = "Posture"):
         self.sample_dir = sample_dir
+        self.posture_dir = posture_dir
         self.model = PoseScoreModel()
+        self._landmarker = None
         os.makedirs(self.sample_dir, exist_ok=True)
+        os.makedirs(self.posture_dir, exist_ok=True)
 
     def list_sample_videos(self) -> List[Dict[str, Any]]:
         """Return list of available pre-generated benchmark archery videos."""
@@ -616,3 +621,345 @@ class PoseAnalysisService:
             })
 
         return landmarks
+
+    def _calculate_2d_angle(self, a: Tuple[float, float], b: Tuple[float, float], c: Tuple[float, float]) -> float:
+        """Calculate 2D angle ABC (at vertex b) in degrees."""
+        ba = (a[0] - b[0], a[1] - b[1])
+        bc = (c[0] - b[0], c[1] - b[1])
+        dot = ba[0] * bc[0] + ba[1] * bc[1]
+        mag_ba = math.hypot(ba[0], ba[1])
+        mag_bc = math.hypot(bc[0], bc[1])
+        if mag_ba * mag_bc == 0:
+            return 180.0
+        cosine = dot / (mag_ba * mag_bc)
+        cosine = max(-1.0, min(1.0, cosine))
+        return math.degrees(math.acos(cosine))
+
+    def _get_landmarker(self):
+        """Lazy load MediaPipe PoseLandmarker singleton from models/pose_landmarker_full.task."""
+        if self._landmarker is None:
+            model_path = os.path.join("models", "pose_landmarker_full.task")
+            if not os.path.exists(model_path):
+                alt_path = "pose_landmarker_full.task"
+                if os.path.exists(alt_path):
+                    model_path = alt_path
+                else:
+                    logger.warning("Pose landmarker task model not found at %s", model_path)
+                    return None
+            try:
+                from mediapipe.tasks.python import BaseOptions
+                from mediapipe.tasks.python.vision import PoseLandmarker, PoseLandmarkerOptions, RunningMode
+                options = PoseLandmarkerOptions(
+                    base_options=BaseOptions(model_asset_path=model_path),
+                    running_mode=RunningMode.IMAGE
+                )
+                self._landmarker = PoseLandmarker.create_from_options(options)
+                logger.info("MediaPipe PoseLandmarker initialized from %s", model_path)
+            except Exception as e:
+                logger.exception("Failed to initialize MediaPipe PoseLandmarker: %s", e)
+                return None
+        return self._landmarker
+
+    def list_posture_sample_images(self) -> List[Dict[str, Any]]:
+        """Return list of available real archer posture photos from Posture/ folder."""
+        pattern = os.path.join(self.posture_dir, "*.*")
+        files = sorted(glob.glob(pattern))
+        results = []
+        for p in files:
+            ext = os.path.splitext(p)[1].lower()
+            if ext in [".jpg", ".jpeg", ".png", ".webp"]:
+                fname = os.path.basename(p)
+                size = os.path.getsize(p)
+                num_part = "".join(ch for ch in fname if ch.isdigit())
+                label = f"Archer Shot #{num_part}" if num_part else "Archer Shot #0"
+                results.append({
+                    "id": fname,
+                    "filename": fname,
+                    "title": label,
+                    "file_size_bytes": size,
+                    "url": f"/api/pose/posture-samples/{fname}",
+                    "analyze_url": f"/api/pose/posture-samples/{fname}/analyze"
+                })
+        return results
+
+    def get_posture_sample_path(self, filename: str) -> Optional[str]:
+        """Resolves file path for posture sample, guarding against directory traversal."""
+        safe_name = os.path.basename(filename)
+        p = os.path.join(self.posture_dir, safe_name)
+        if os.path.exists(p) and os.path.isfile(p):
+            return p
+        return None
+
+    def _draw_posture_annotation(
+        self,
+        img_bgr: np.ndarray,
+        landmarks: Any,
+        handedness: str,
+        bow_indices: Tuple[int, int, int],
+        draw_indices: Tuple[int, int, int],
+        bow_angle: float,
+        draw_angle: float,
+        torso_angle: float,
+        pred: Dict[str, Any],
+        accuracy: Dict[str, Any]
+    ) -> str:
+        """Render anatomical skeleton, joint angles, anchor reticle, and telemetry banner."""
+        annotated = img_bgr.copy()
+        h, w = annotated.shape[:2]
+        scale = max(0.6, min(2.0, max(w, h) / 700.0))
+        thick = max(2, int(2.5 * scale))
+        pt_r = max(4, int(5 * scale))
+
+        def to_px(lm_pt):
+            return int(lm_pt.x * w), int(lm_pt.y * h)
+
+        # Standard connections
+        connections = [
+            (11, 12), (11, 23), (12, 24), (23, 24), # Torso
+            (23, 25), (25, 27), (24, 26), (26, 28), # Legs
+            (0, 11), (0, 12) # Head
+        ]
+        for idx1, idx2 in connections:
+            p1 = to_px(landmarks[idx1])
+            p2 = to_px(landmarks[idx2])
+            cv2.line(annotated, p1, p2, (200, 180, 100), thick, cv2.LINE_AA)
+
+        # Bow Arm: Bright Emerald Cyan
+        p_b_sh = to_px(landmarks[bow_indices[0]])
+        p_b_el = to_px(landmarks[bow_indices[1]])
+        p_b_wr = to_px(landmarks[bow_indices[2]])
+        cv2.line(annotated, p_b_sh, p_b_el, (80, 220, 16), thick + 1, cv2.LINE_AA)
+        cv2.line(annotated, p_b_el, p_b_wr, (80, 220, 16), thick + 1, cv2.LINE_AA)
+
+        # Draw Arm: Bright Amber Gold
+        p_d_sh = to_px(landmarks[draw_indices[0]])
+        p_d_el = to_px(landmarks[draw_indices[1]])
+        p_d_wr = to_px(landmarks[draw_indices[2]])
+        cv2.line(annotated, p_d_sh, p_d_el, (0, 190, 255), thick + 1, cv2.LINE_AA)
+        cv2.line(annotated, p_d_el, p_d_wr, (0, 190, 255), thick + 1, cv2.LINE_AA)
+
+        # Draw Joint Circles
+        key_indices = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]
+        for idx in key_indices:
+            px, py = to_px(landmarks[idx])
+            cv2.circle(annotated, (px, py), pt_r + 2, (255, 255, 255), -1, cv2.LINE_AA)
+            cv2.circle(annotated, (px, py), pt_r, (40, 40, 220), -1, cv2.LINE_AA)
+
+        # Draw Anchor Crosshair Reticle at drawing wrist
+        ax, ay = p_d_wr
+        r_ret = max(10, int(14 * scale))
+        cv2.circle(annotated, (ax, ay), r_ret, (0, 230, 255), max(1, int(1.5 * scale)), cv2.LINE_AA)
+        cv2.circle(annotated, (ax, ay), 3, (0, 255, 255), -1, cv2.LINE_AA)
+        cv2.line(annotated, (ax - r_ret - 4, ay), (ax + r_ret + 4, ay), (0, 230, 255), 1, cv2.LINE_AA)
+        cv2.line(annotated, (ax, ay - r_ret - 4), (ax, ay + r_ret + 4), (0, 230, 255), 1, cv2.LINE_AA)
+
+        # Draw Angle Badges
+        def draw_badge(pos, text, bg_color):
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            f_scale = 0.45 * scale
+            f_thick = max(1, int(scale))
+            (tw, th), bl = cv2.getTextSize(text, font, f_scale, f_thick)
+            bx, by = pos[0] - tw // 2, pos[1] - 12
+            cv2.rectangle(annotated, (bx - 5, by - th - 5), (bx + tw + 5, by + 5), bg_color, -1)
+            cv2.rectangle(annotated, (bx - 5, by - th - 5), (bx + tw + 5, by + 5), (255, 255, 255), 1)
+            cv2.putText(annotated, text, (bx, by), font, f_scale, (255, 255, 255), f_thick, cv2.LINE_AA)
+
+        draw_badge(p_b_el, f"Bow Arm: {bow_angle:.1f} deg", (20, 130, 40))
+        draw_badge(p_d_el, f"Elbow: {draw_angle:.1f} deg", (20, 100, 200))
+
+        # Top Banner with Opacity
+        banner_h = max(34, int(42 * scale))
+        overlay = annotated.copy()
+        cv2.rectangle(overlay, (0, 0), (w, banner_h), (15, 22, 41), -1)
+        cv2.addWeighted(overlay, 0.85, annotated, 0.15, 0, annotated)
+
+        score_disp = pred.get("score_display", "9")
+        score_cat = pred.get("score_category", "Gold")
+        acc_pct = accuracy.get("overall_accuracy_pct", 90.0)
+        banner_txt = f"ARCHER POSTURE AI  |  Score: {score_disp} ({score_cat})  |  Accuracy: {acc_pct:.1f}%  |  {handedness.upper()}-HANDED"
+        cv2.putText(
+            annotated,
+            banner_txt,
+            (max(10, int(15 * scale)), int(banner_h * 0.65)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45 * scale,
+            (240, 245, 255),
+            max(1, int(scale)),
+            cv2.LINE_AA
+        )
+
+        _, buf = cv2.imencode('.jpg', annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        return f"data:image/jpeg;base64,{base64.b64encode(buf).decode('utf-8')}"
+
+    def analyze_posture_image(
+        self,
+        image_data: bytes,
+        filename: Optional[str] = None,
+        archer_meta: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Analyze an archer shooting posture photo (from upload, sample folder, or camera frame).
+        Extracts 33 anatomical landmarks using MediaPipe, determines handedness,
+        computes joint angles, predicts Olympic score and posture accuracy %,
+        and generates an annotated visualization with skeleton and telemetry overlay.
+        """
+        if not image_data or len(image_data) == 0:
+            raise ValueError("Empty image data provided")
+
+        nparr = np.frombuffer(image_data, np.uint8)
+        img_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img_bgr is None:
+            raise ValueError("Failed to decode image data into valid image")
+
+        h, w = img_bgr.shape[:2]
+
+        landmarker = self._get_landmarker()
+        if landmarker is None:
+            raise RuntimeError("MediaPipe PoseLandmarker model is not available")
+
+        import mediapipe as mp
+        img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_rgb)
+        detection = landmarker.detect(mp_image)
+
+        if not detection.pose_landmarks:
+            return {
+                "success": False,
+                "message": "No archer body pose detected in image. Please ensure the full upper body and arms are clearly visible.",
+                "filename": filename,
+                "resolution": {"width": w, "height": h}
+            }
+
+        lm = detection.pose_landmarks[0]
+        # Landmarks list
+        landmarks_data = []
+        for i, pt in enumerate(lm):
+            landmarks_data.append({
+                "id": i,
+                "x": round(float(pt.x), 4),
+                "y": round(float(pt.y), 4),
+                "z": round(float(pt.z), 4),
+                "visibility": round(float(pt.visibility if pt.visibility is not None else 0.95), 4)
+            })
+
+        l_sh = (lm[11].x, lm[11].y)
+        r_sh = (lm[12].x, lm[12].y)
+        l_el = (lm[13].x, lm[13].y)
+        r_el = (lm[14].x, lm[14].y)
+        l_wr = (lm[15].x, lm[15].y)
+        r_wr = (lm[16].x, lm[16].y)
+        l_hip = (lm[23].x, lm[23].y)
+        r_hip = (lm[24].x, lm[24].y)
+        nose = (lm[0].x, lm[0].y)
+
+        # Distances to head/chin
+        dist_l_nose = math.hypot(l_wr[0] - nose[0], l_wr[1] - nose[1])
+        dist_r_nose = math.hypot(r_wr[0] - nose[0], r_wr[1] - nose[1])
+
+        # Handedness determination
+        if dist_r_nose < dist_l_nose:
+            handedness = "right"
+            handedness_label = "Right-Handed (Left Bow Arm)"
+            bow_shoulder, bow_elbow, bow_wrist = l_sh, l_el, l_wr
+            draw_shoulder, draw_elbow, draw_wrist = r_sh, r_el, r_wr
+            bow_indices = (11, 13, 15)
+            draw_indices = (12, 14, 16)
+        else:
+            handedness = "left"
+            handedness_label = "Left-Handed (Right Bow Arm)"
+            bow_shoulder, bow_elbow, bow_wrist = r_sh, r_el, r_wr
+            draw_shoulder, draw_elbow, draw_wrist = l_sh, l_el, l_wr
+            bow_indices = (12, 14, 16)
+            draw_indices = (11, 13, 15)
+
+        # 2D Angles
+        raw_bow_angle = self._calculate_2d_angle(bow_shoulder, bow_elbow, bow_wrist)
+        raw_draw_angle = self._calculate_2d_angle(draw_shoulder, draw_elbow, draw_wrist)
+
+        # For draw elbow: if arm is bent at anchor (< 90 interior angle),
+        # convert to arrow pull line angle (180 - interior)
+        if raw_draw_angle < 90.0:
+            effective_draw_elbow = 180.0 - raw_draw_angle
+        else:
+            effective_draw_elbow = raw_draw_angle
+
+        # Torso inclination
+        mid_hip = ((l_hip[0] + r_hip[0]) / 2.0, (l_hip[1] + r_hip[1]) / 2.0)
+        mid_sh = ((l_sh[0] + r_sh[0]) / 2.0, (l_sh[1] + r_sh[1]) / 2.0)
+        tdx = mid_sh[0] - mid_hip[0]
+        tdy = mid_sh[1] - mid_hip[1]
+        torso_angle = math.degrees(math.atan2(abs(tdy), abs(tdx))) if tdx != 0 else 90.0
+
+        # Shoulder line tilt from horizontal (0 deg = perfectly horizontal shoulders)
+        sh_dx = abs(r_sh[0] - l_sh[0])
+        sh_dy = abs(r_sh[1] - l_sh[1])
+        shoulder_tilt = math.degrees(math.atan2(sh_dy, sh_dx)) if sh_dx > 0 else 0.0
+
+        # Feed to ML model
+        features = {
+            "bow_arm_angle": round(raw_bow_angle, 1),
+            "draw_elbow_angle": round(effective_draw_elbow, 1),
+            "anchor_jitter": 0.5,
+            "bow_arm_deflection_deg": 0.4,
+            "anchor_duration_sec": 2.0,
+            "torso_tilt_deg": round(torso_angle, 1)
+        }
+        pred = self.model.predict(features)
+        accuracy = pred.get("posture_accuracy", {})
+
+        # Compute projected target coordinates based on predicted score
+        score_val = pred.get("predicted_score", 9)
+        ring_r = max(0.03, (11.0 - score_val) * 0.08)
+        angle_rad = math.radians(45.0 if raw_bow_angle >= 178 else 225.0)
+        target_x = round(ring_r * math.cos(angle_rad), 3)
+        target_y = round(ring_r * math.sin(angle_rad), 3)
+
+        # Draw annotated image
+        annotated_b64 = self._draw_posture_annotation(
+            img_bgr=img_bgr,
+            landmarks=lm,
+            handedness=handedness,
+            bow_indices=bow_indices,
+            draw_indices=draw_indices,
+            bow_angle=raw_bow_angle,
+            draw_angle=effective_draw_elbow,
+            torso_angle=torso_angle,
+            pred=pred,
+            accuracy=accuracy
+        )
+
+        return {
+            "success": True,
+            "filename": filename or "posture_snapshot.jpg",
+            "resolution": {"width": w, "height": h},
+            "handedness": handedness,
+            "handedness_label": handedness_label,
+            "landmarks": landmarks_data,
+            "biomechanics": {
+                "bow_arm_angle": round(raw_bow_angle, 1),
+                "bow_arm_ideal_range": "178.0° - 180.0°",
+                "bow_arm_status": "OPTIMAL" if 177.0 <= raw_bow_angle <= 181.0 else ("ACCEPTABLE" if raw_bow_angle >= 170.0 else "UNDER_EXTENDED"),
+                "draw_elbow_angle": round(effective_draw_elbow, 1),
+                "draw_elbow_ideal_range": "138.0° - 145.0°",
+                "draw_elbow_status": "OPTIMAL" if 135.0 <= effective_draw_elbow <= 145.0 else ("SLIGHT_DEVIATION" if 130.0 <= effective_draw_elbow <= 155.0 else "FAULT"),
+                "torso_tilt_deg": round(torso_angle, 1),
+                "torso_ideal_range": "88.0° - 92.0°",
+                "shoulder_tilt_deg": round(shoulder_tilt, 1),
+                "anchor_hold_jitter_px": 0.5
+            },
+            "prediction": {
+                "predicted_score": pred.get("predicted_score"),
+                "score_display": pred.get("score_display"),
+                "score_category": pred.get("score_category"),
+                "zone_description": pred.get("zone_description"),
+                "execution_score_pct": pred.get("form_score_pct") or pred.get("execution_score_pct", 85.0),
+                "confidence": pred.get("confidence", 0.95),
+                "target_coordinates": {"x": target_x, "y": target_y}
+            },
+            "posture_accuracy": accuracy,
+            "diagnostics": pred.get("diagnostics", []),
+            "coaching_feedback": [d["message"] for d in pred.get("diagnostics", [])],
+            "annotated_image_base64": annotated_b64,
+            "archer_meta": archer_meta or {}
+        }
+
