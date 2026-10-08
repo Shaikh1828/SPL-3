@@ -828,6 +828,40 @@ export default function CamerasPage() {
     }
   }
 
+  const handleQuickAddObsToLane = async (lane: number) => {
+    if (!activeSession) return
+    try {
+      const obsName = `OBS Virtual Camera Lane ${lane}`
+      let targetCam = globalCameras.find(
+        (c) => c.name.toLowerCase().includes('obs') && c.name.includes(String(lane))
+      )
+      if (!targetCam) {
+        targetCam = await camerasApi.create({
+          name: obsName,
+          camera_type: 'USB',
+          url: 'browser://obs',
+        })
+      }
+      await camerasApi.assign(activeSession.id, {
+        camera_id: targetCam.id,
+        lane: lane,
+      })
+      toast.success(`OBS Virtual Camera connected and assigned to Lane ${lane}!`)
+      if (cameraStream.selectedDeviceId) {
+        await cameraStream.startStream(cameraStream.selectedDeviceId, lane)
+      } else if (cameraStream.devices.length > 0) {
+        const obsDev = cameraStream.devices.find((d) => d.isObs)
+        const devId = obsDev ? obsDev.deviceId : cameraStream.devices[0].deviceId
+        await cameraStream.startStream(devId, lane)
+      }
+      setIsAddCameraOpen(false)
+      setShowRegisterForm(false)
+      loadCameras()
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to add OBS Virtual Camera')
+    }
+  }
+
   const handleRegisterCamera = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!activeSession) return
@@ -843,7 +877,14 @@ export default function CamerasPage() {
         lane: assignedLane,
       })
       toast.success(`Connected and assigned to Lane ${assignedLane}!`)
-      setNewCameraData({ name: '', camera_type: 'USB', url: 'camera://0' })
+      if (cameraStream.selectedDeviceId) {
+        await cameraStream.startStream(cameraStream.selectedDeviceId, assignedLane)
+      } else if (cameraStream.devices.length > 0) {
+        const obsDev = cameraStream.devices.find((d) => d.isObs)
+        const devId = obsDev ? obsDev.deviceId : cameraStream.devices[0].deviceId
+        await cameraStream.startStream(devId, assignedLane)
+      }
+      setNewCameraData({ name: '', camera_type: 'USB', url: 'browser://obs' })
       setShowRegisterForm(false)
       setIsAddCameraOpen(false)
       setStreamTestResult(null)
@@ -1321,6 +1362,30 @@ export default function CamerasPage() {
               </button>
             </div>
 
+            {/* 1-Click Quick Connect OBS Virtual Camera */}
+            <div className="p-3.5 rounded-xl bg-gradient-to-r from-navy-900 via-navy-900 to-gold-950/40 border border-gold-500/40 flex items-center justify-between gap-3 shadow-lg">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-gold-500/20 text-gold-400 flex items-center justify-center shrink-0">
+                  <Video className="w-5 h-5 text-gold-400" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-100 flex items-center gap-1.5">
+                    🎥 OBS Virtual Camera Quick Connect
+                  </h4>
+                  <p className="text-[11px] text-slate-400">
+                    Auto-assign & stream OBS video feed to Lane {assignedLane}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleQuickAddObsToLane(assignedLane)}
+                className="btn-primary py-1.5 px-3 text-xs font-bold flex items-center gap-1.5 shadow-md whitespace-nowrap"
+              >
+                <Zap className="w-3.5 h-3.5" /> Connect Lane {assignedLane}
+              </button>
+            </div>
+
             {!showRegisterForm ? (
               <form onSubmit={handleAssignCamera} className="space-y-4">
                 <div>
@@ -1408,7 +1473,7 @@ export default function CamerasPage() {
                         setNewCameraData({
                           name: dev.isObs ? `OBS Virtual Camera Lane ${assignedLane}` : `${dev.label} Lane ${assignedLane}`,
                           camera_type: 'USB',
-                          url: 'camera://0',
+                          url: dev.isObs ? 'browser://obs' : `browser://${dev.deviceId}`,
                         })
                       }
                     }}
@@ -1431,11 +1496,11 @@ export default function CamerasPage() {
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <button
                       type="button"
-                      onClick={() => handleApplyPreset(`OBS Virtual Cam Lane ${assignedLane}`, 'USB', 'camera://0')}
-                      className="p-2 rounded bg-navy-900 border border-navy-700 hover:border-gold-500/60 text-slate-300 text-left transition-colors"
+                      onClick={() => handleApplyPreset(`OBS Virtual Camera Lane ${assignedLane}`, 'USB', 'browser://obs')}
+                      className="p-2 rounded bg-navy-900 border border-gold-500/40 hover:border-gold-400 text-slate-200 text-left transition-colors"
                     >
-                      🎥 <span className="font-semibold text-slate-100">OBS Virtual Cam #0</span>
-                      <p className="text-[10px] text-slate-500 font-mono mt-0.5">camera://0</p>
+                      🎥 <span className="font-semibold text-gold-300">OBS Virtual Camera</span>
+                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">browser://obs</p>
                     </button>
                     <button
                       type="button"

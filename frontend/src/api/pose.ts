@@ -66,6 +66,13 @@ export const poseApi = {
       .post<PostureImageAnalysisResponse>('/pose/analyze-snapshot', data)
       .then((r) => r.data),
 
+  analyzeLaneCamera: (laneNumber: number, sessionId?: number) =>
+    apiClient
+      .post<PostureImageAnalysisResponse>(`/pose/lane/${laneNumber}/analyze-camera`, null, {
+        params: sessionId ? { session_id: sessionId } : undefined,
+      })
+      .then((r) => r.data),
+
   predictMetrics: (metrics: {
     bow_arm_angle: number
     draw_elbow_angle: number

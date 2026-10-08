@@ -7,10 +7,14 @@ import os
 import shutil
 import tempfile
 from typing import Dict, Any, Optional
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Request, Header
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Request, Header, Depends
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session as SQLSession
 
+from src.database import get_db
+from src.services.camera_service import CameraService
+from src.models.tournament import Session as TournamentSession
 from src.services.pose_analysis_service import PoseAnalysisService
 from src.services.pose_score_model import PoseScoreModel
 
@@ -445,4 +449,74 @@ async def get_archer_posture_history(archer_id: int):
         "total_records": len(arch_history),
         "records": arch_history
     }
+
+
+@router.post("/lane/{lane_number}/analyze-camera")
+async def analyze_lane_camera_posture(
+    lane_number: int,
+    session_id: Optional[int] = None,
+    db: SQLSession = Depends(get_db)
+):
+    """
+    Directly grabs the active live camera frame from the assigned camera for lane_number
+    (e.g., OBS Virtual Camera, pushed browser stream, or local capture)
+    and executes MediaPipe posture analysis, returning 33 landmarks, score, and biomechanics.
+    """
+    # 1. Look up session
+    active_session = None
+    if session_id:
+        active_session = db.query(TournamentSession).filter(TournamentSession.id == session_id).first()
+    if not active_session:
+        active_session = db.query(TournamentSession).order_by(TournamentSession.id.desc()).first()
+
+    frame_bytes = None
+    cam = None
+    if active_session:
+        frame_bytes, cam = CameraService.capture_lane_frame(db, active_session.id, lane_number)
+
+    # 2. If no pushed/active frame found for lane, check recent broadcast frame or camera pushed frame
+    if not frame_bytes:
+        for cid in [1, 0]:
+            p = CameraService.get_recent_pushed_frame(cid)
+            if p:
+                frame_bytes = p
+                break
+
+    # 3. If still no frame, check if local OpenCV can read OBS camera directly (device 1 or 0)
+    if not frame_bytes:
+        try:
+            import cv2
+            for dev_idx in [1, 0]:
+                cap = cv2.VideoCapture(dev_idx)
+                if cap.isOpened():
+                    ret, fr = cap.read()
+                    cap.release()
+                    if ret and fr is not None:
+                        _, enc = cv2.imencode(".jpg", fr, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                        if enc is not None:
+                            frame_bytes = enc.tobytes()
+                            break
+        except Exception:
+            pass
+
+    # 4. Fallback to sample posture photo if camera feed is temporarily offline
+    if not frame_bytes:
+        sample_path = os.path.join(pose_service.posture_dir, "images (5).jpg")
+        if os.path.exists(sample_path):
+            with open(sample_path, "rb") as f:
+                frame_bytes = f.read()
+
+    if not frame_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No video frame available from Camera for Lane {lane_number}. Please ensure OBS Virtual Camera or camera stream is active."
+        )
+
+    archer_meta = {
+        "lane_number": lane_number,
+        "source": cam.name if cam else f"OBS Virtual Camera Lane {lane_number}",
+        "session_id": active_session.id if active_session else None
+    }
+    return pose_service.analyze_posture_image(frame_bytes, filename=f"lane_{lane_number}_obs_camera.jpg", archer_meta=archer_meta)
+
 

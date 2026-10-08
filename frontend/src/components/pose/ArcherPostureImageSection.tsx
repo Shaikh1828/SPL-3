@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import {
   Camera, Upload, Sparkles, CheckCircle2, AlertTriangle,
-  Crosshair, Award, ShieldCheck, RefreshCw, Download, User, Check
+  Crosshair, Award, ShieldCheck, RefreshCw, Download, User, Check, Zap
 } from 'lucide-react'
 import { poseApi } from '@/api/pose'
 import type {
@@ -52,11 +52,26 @@ export default function ArcherPostureImageSection({
   const enumerateCameras = async () => {
     try {
       if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+        // Quick permission prompt so labels (e.g. OBS Virtual Camera) become readable
+        try {
+          const tempStream = await navigator.mediaDevices.getUserMedia({ video: true })
+          tempStream.getTracks().forEach((t) => t.stop())
+        } catch {
+          // Handled or already permitted
+        }
         const devs = await navigator.mediaDevices.enumerateDevices()
         const videoInputs = devs.filter((d) => d.kind === 'videoinput')
         setVideoDevices(videoInputs)
-        if (videoInputs.length > 0 && !selectedDeviceId) {
-          setSelectedDeviceId(videoInputs[0].deviceId)
+        // Auto-select OBS Virtual Camera if present
+        if (videoInputs.length > 0) {
+          const obs = videoInputs.find(d => 
+            d.label.toLowerCase().includes('obs') || d.label.toLowerCase().includes('virtual')
+          )
+          if (obs) {
+            setSelectedDeviceId(obs.deviceId)
+          } else if (!selectedDeviceId) {
+            setSelectedDeviceId(videoInputs[0].deviceId)
+          }
         }
       }
     } catch {
@@ -133,11 +148,12 @@ export default function ArcherPostureImageSection({
   }
 
   // ─── Live Camera Control & Snapshot ───────────────────────────────────────
-  const startCamera = async () => {
+  const startCamera = async (overrideDeviceId?: string) => {
+    const devId = overrideDeviceId || selectedDeviceId
     try {
       const constraints: MediaStreamConstraints = {
-        video: selectedDeviceId
-          ? { deviceId: { exact: selectedDeviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        video: devId
+          ? { deviceId: { exact: devId }, width: { ideal: 1280 }, height: { ideal: 720 } }
           : { width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false
       }
@@ -148,7 +164,8 @@ export default function ArcherPostureImageSection({
         cameraVideoRef.current.play()
       }
       setIsCameraActive(true)
-      toast.success('Archer camera stream connected')
+      const dev = videoDevices.find(d => d.deviceId === devId)
+      toast.success(dev?.label ? `Connected: ${dev.label}` : 'Camera stream connected')
     } catch {
       toast.error('Unable to access camera. Check device permissions.')
     }
@@ -160,6 +177,34 @@ export default function ArcherPostureImageSection({
       cameraStreamRef.current = null
     }
     setIsCameraActive(false)
+  }
+
+  const handleDeviceChange = async (newDeviceId: string) => {
+    setSelectedDeviceId(newDeviceId)
+    if (isCameraActive) {
+      stopCamera()
+      setTimeout(() => {
+        startCamera(newDeviceId)
+      }, 150)
+    }
+  }
+
+  const analyzeAssignedLaneCamera = async () => {
+    const laneNum = selectedLane?.lane_number || 1
+    try {
+      setIsAnalyzing(true)
+      setSelectedSample(`lane_${laneNum}_assigned_camera.jpg`)
+      const res = await poseApi.analyzeLaneCamera(laneNum)
+      setAnalysis(res)
+      if (res.annotated_image_base64) {
+        setCustomImageUri(`data:image/jpeg;base64,${res.annotated_image_base64}`)
+      }
+      toast.success(`Lane ${laneNum} Camera Evaluated: Score ${res.prediction.score_display} (${res.posture_accuracy.overall_accuracy_pct}%)`)
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to analyze assigned lane camera')
+    } finally {
+      setIsAnalyzing(false)
+    }
   }
 
   const captureCameraSnapshot = async () => {
@@ -438,31 +483,45 @@ export default function ArcherPostureImageSection({
               </p>
             </div>
 
-            <div className="flex items-center gap-3">
-              {videoDevices.length > 1 && (
-                <select
-                  value={selectedDeviceId}
-                  onChange={(e) => setSelectedDeviceId(e.target.value)}
-                  className="bg-navy-950 border border-navy-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-gold-400"
-                >
-                  {videoDevices.map((d, i) => (
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={selectedDeviceId}
+                onChange={(e) => handleDeviceChange(e.target.value)}
+                className="bg-navy-950 border border-gold-500/40 rounded-xl px-3 py-2 text-xs font-semibold text-slate-100 focus:outline-none focus:border-gold-400 max-w-[260px] truncate"
+              >
+                {videoDevices.map((d, i) => {
+                  const isObs = d.label.toLowerCase().includes('obs') || d.label.toLowerCase().includes('virtual')
+                  return (
                     <option key={d.deviceId || i} value={d.deviceId}>
-                      {d.label || `Camera ${i + 1}`}
+                      {isObs ? '🎥 [OBS Virtual Camera] ' : '📹 '} {d.label || `Camera ${i + 1}`}
                     </option>
-                  ))}
-                </select>
-              )}
+                  )
+                })}
+                {videoDevices.length === 0 && (
+                  <option value="">🎥 OBS Virtual Camera (Auto-Detect)</option>
+                )}
+              </select>
 
               <button
-                onClick={isCameraActive ? stopCamera : startCamera}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 ${
+                onClick={isCameraActive ? stopCamera : () => startCamera()}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 ${
                   isCameraActive
                     ? 'bg-rose-600 hover:bg-rose-500 text-white'
                     : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                 }`}
               >
-                <Camera className="w-4 h-4" />
-                {isCameraActive ? 'Disconnect Stream' : 'Connect Camera'}
+                <Camera className="w-3.5 h-3.5" />
+                {isCameraActive ? 'Disconnect' : 'Connect Camera'}
+              </button>
+
+              <button
+                onClick={analyzeAssignedLaneCamera}
+                disabled={isAnalyzing}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold bg-navy-800 hover:bg-navy-700 border border-gold-500/40 text-gold-300 transition-all flex items-center gap-1.5 shadow-md hover:scale-[1.02]"
+                title="Fetch and evaluate the live camera frame assigned to this lane in the Camera section"
+              >
+                <Zap className="w-3.5 h-3.5 text-gold-400" />
+                Analyze Lane {selectedLane?.lane_number || 1} Feed
               </button>
             </div>
           </div>
@@ -483,7 +542,7 @@ export default function ArcherPostureImageSection({
                   Camera stream offline
                 </span>
                 <button
-                  onClick={startCamera}
+                  onClick={() => startCamera()}
                   className="px-4 py-2 bg-navy-800 hover:bg-navy-700 border border-navy-700 rounded-xl text-xs font-bold text-slate-200"
                 >
                   Start Camera Feed
