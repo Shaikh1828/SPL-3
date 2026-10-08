@@ -15,6 +15,8 @@ RUN apt-get update && apt-get install -y \
     libxrender-dev \
     libgl1 \
     libglib2.0-0 \
+    libegl1 \
+    libgles2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install venv and upgrade pip
@@ -57,7 +59,8 @@ RUN /build/.venv/bin/pip install --default-timeout=600 --retries 5 \
     ultralytics==8.3.241 \
     scikit-learn==1.4.1.post1 \
     joblib==1.3.2 \
-    reportlab==4.1.0
+    reportlab==4.1.0 \
+    mediapipe>=0.10.14
 
 # ============================================================================
 # Runtime stage
@@ -75,6 +78,8 @@ RUN apt-get update && apt-get install -y \
     libxrender-dev \
     libgl1 \
     libglib2.0-0 \
+    libegl1 \
+    libgles2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy venv from builder

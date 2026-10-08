@@ -25,6 +25,7 @@ services:
       - ./Data:/app/Data
       - ./models:/app/models
       - ./storage/sample_videos:/app/storage/sample_videos
+      - ./Posture:/app/Posture
       - storage_volume:/storage
     depends_on:
       db:
