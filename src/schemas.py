@@ -83,11 +83,19 @@ class TournamentResponse(BaseModel):
 
     id: int
     name: str
-    location: str
-    start_date: Optional[datetime]
-    end_date: Optional[datetime]
-    created_by_user_id: int
-    created_at: Optional[datetime]
+    location: Optional[str] = None
+    description: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    created_by_user_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+    status: Optional[str] = "ongoing"  # "ongoing", "completed", "upcoming"
+    total_sessions: Optional[int] = 0
+    active_sessions: Optional[int] = 0
+    completed_sessions: Optional[int] = 0
+    total_archers: Optional[int] = 0
+    winner_name: Optional[str] = None
+    winner_score: Optional[int] = None
 
     class Config:
         from_attributes = True

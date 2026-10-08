@@ -23,6 +23,8 @@ services:
       - ./alembic:/app/alembic
       - ./runs:/app/runs
       - ./Data:/app/Data
+      - ./models:/app/models
+      - ./storage/sample_videos:/app/storage/sample_videos
       - storage_volume:/storage
     depends_on:
       db:
@@ -70,7 +72,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U archery -d archery_db"]
       interval: 10s

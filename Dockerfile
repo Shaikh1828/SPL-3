@@ -54,7 +54,10 @@ RUN /build/.venv/bin/pip install --default-timeout=600 --retries 5 \
     aiosqlite==0.19.0 \
     numpy==1.24.3 \
     opencv-python==4.8.1.78 \
-    ultralytics==8.3.241
+    ultralytics==8.3.241 \
+    scikit-learn==1.4.1.post1 \
+    joblib==1.3.2 \
+    reportlab==4.1.0
 
 # ============================================================================
 # Runtime stage

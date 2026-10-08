@@ -61,7 +61,7 @@ import {
 } from 'recharts'
 
 export default function ReportsPage() {
-  const { activeSession, setActiveSession } = useSessionStore()
+  const { activeSession, activeTournament, setActiveSession } = useSessionStore()
 
   // Selection states
   const [tournaments, setTournaments] = useState<Tournament[]>([])
@@ -122,8 +122,10 @@ export default function ReportsPage() {
           setSelectedArcherName(dirRes[0].archer_name)
         }
 
-        // If an active session exists in store, pre-select its tournament and session
-        if (activeSession) {
+        // If activeTournament or activeSession exists in store, pre-select
+        if (activeTournament) {
+          setSelectedTournamentId(activeTournament.id)
+        } else if (activeSession) {
           setSelectedTournamentId(activeSession.tournament_id)
           setSelectedSessionId(activeSession.id)
         } else if (tourneysRes.items && tourneysRes.items.length > 0) {

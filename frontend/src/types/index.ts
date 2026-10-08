@@ -39,9 +39,17 @@ export interface Tournament {
   location?: string
   start_date: string
   end_date: string
-  created_by: number
-  created_at: string
-  updated_at: string
+  created_by?: number
+  created_by_user_id?: number
+  created_at?: string
+  updated_at?: string
+  status?: 'ongoing' | 'completed' | 'upcoming'
+  total_sessions?: number
+  active_sessions?: number
+  completed_sessions?: number
+  total_archers?: number
+  winner_name?: string
+  winner_score?: number
 }
 
 export interface TournamentCreate {
@@ -515,4 +523,184 @@ export interface ScoreGalleryFilterParams {
   limit?: number
 }
 
+// ─── Archer Pose & Biomechanics Types ────────────────────────────────────────
 
+export interface PoseLandmark {
+  id: number
+  x: number
+  y: number
+  z: number
+  visibility: number
+}
+
+export interface ShotPhaseInfo {
+  phase: 'stance' | 'draw' | 'anchor' | 'release'
+  name: string
+  start_frame: number
+  end_frame: number
+  start_time: number
+  end_time: number
+}
+
+export interface CoachingDiagnostic {
+  metric: string
+  status: 'EXCELLENT' | 'GOOD' | 'NEEDS_WORK' | 'POOR'
+  value: string
+  target: string
+  message: string
+}
+
+export interface PostureAccuracyComponents {
+  bow_arm_accuracy_pct: number
+  draw_elbow_accuracy_pct: number
+  anchor_stability_accuracy_pct: number
+  release_follow_through_accuracy_pct: number
+  timing_balance_accuracy_pct: number
+}
+
+export interface PostureAccuracyData {
+  overall_accuracy_pct: number
+  accuracy_tier: 'OLYMPIC_ELITE' | 'COMPETITIVE' | 'INTERMEDIATE' | 'DEFICIENT'
+  accuracy_label: string
+  tier_color: string
+  components: PostureAccuracyComponents
+}
+
+export interface BiomechanicsScorePrediction {
+  predicted_score: number
+  score_display: string
+  exact_score: number
+  is_x_ring: boolean
+  score_category: 'Gold' | 'Red' | 'Blue' | 'Black' | 'White'
+  category_color: string
+  zone_description: string
+  form_score_pct: number
+  confidence: number
+  posture_accuracy?: PostureAccuracyData
+  metrics_evaluated: {
+    bow_arm_angle: number
+    draw_elbow_angle: number
+    anchor_jitter_px: number
+    bow_arm_deflection_deg: number
+    anchor_duration_sec: number
+  }
+  diagnostics: CoachingDiagnostic[]
+}
+
+export interface PoseFrameData {
+  frame: number
+  time: number
+  phase: 'stance' | 'draw' | 'anchor' | 'release'
+  landmarks: PoseLandmark[]
+}
+
+export interface PoseAnalysisResponse {
+  success: boolean
+  video_id: string
+  title: string
+  stream_url?: string
+  duration_sec: number
+  fps: number
+  total_frames: number
+  resolution: { width: number; height: number }
+  phases: ShotPhaseInfo[]
+  biomechanics_summary: {
+    avg_bow_arm_angle: number
+    avg_draw_elbow_angle: number
+    anchor_hold_duration_sec: number
+    anchor_jitter_px: number
+    bow_arm_deflection_deg: number
+    release_frame: number
+  }
+  prediction: BiomechanicsScorePrediction
+  coaching_notes: string[]
+  frames_landmarks: PoseFrameData[]
+}
+
+export interface SampleVideoItem {
+  id: string
+  title: string
+  filename: string
+  expected_score: number
+  score_display: string
+  category: string
+  form_score_pct: number
+  description: string
+  badge: string
+  is_available: boolean
+  file_size_bytes: number
+  stream_url: string
+}
+
+export interface RangeLaneArcherItem {
+  lane_number: number
+  archer: {
+    id: number
+    name: string
+    category: string
+    club: string
+    hand: string
+    rank: number
+    target_number: string
+    bow_spec: string
+  }
+  camera: {
+    id: string
+    name: string
+    type: 'sample' | 'hardware' | 'ip'
+    sample_id?: string | null
+    status: string
+    resolution: string
+  }
+  baseline_accuracy_pct: number
+  accuracy_tier: 'OLYMPIC_ELITE' | 'COMPETITIVE' | 'INTERMEDIATE' | 'DEFICIENT'
+  accuracy_label: string
+  tier_color: string
+  recent_form_notes: string
+  default_angles: {
+    bow_arm_angle: number
+    draw_elbow_angle: number
+    anchor_jitter: number
+    bow_arm_deflection_deg: number
+    anchor_duration_sec: number
+  }
+}
+
+export interface LiveFrameAnalysisResult {
+  success: boolean
+  lane_number?: number
+  archer_id?: number
+  archer_name?: string
+  camera_source?: string
+  phase?: string
+  landmarks: PoseLandmark[]
+  metrics: {
+    bow_arm_angle: number
+    draw_elbow_angle: number
+    shoulder_alignment_angle: number
+    anchor_jitter_px: number
+    bow_arm_deflection_deg: number
+    anchor_duration_sec: number
+  }
+  posture_accuracy: PostureAccuracyData
+  predicted_score: number
+  score_display: string
+  score_category: string
+  zone_description: string
+  confidence: number
+  diagnostics: CoachingDiagnostic[]
+}
+
+export interface ArcherPostureRecord {
+  record_id: number
+  archer_id: number
+  archer_name: string
+  lane_number: number
+  camera_source: string
+  overall_accuracy_pct: number
+  accuracy_tier: string
+  predicted_score: number
+  bow_arm_angle: number
+  draw_elbow_angle: number
+  notes?: string
+}

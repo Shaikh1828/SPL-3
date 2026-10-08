@@ -12,6 +12,7 @@ from src.api.reports import router as report_router
 from src.api.health import router as health_router
 from src.api.users import router as user_router
 from src.api.training import router as training_router
+from src.api.pose import router as pose_router
 
 __all__ = [
     "auth_router",
@@ -24,6 +25,7 @@ __all__ = [
     "health_router",
     "user_router",
     "training_router",
+    "pose_router",
 ]
 
 

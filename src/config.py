@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     api_workers: int = 4
 
     # Database
-    database_url: str = "postgresql://postgres:postgres@localhost:5432/archery"
+    database_url: str = os.getenv("DATABASE_URL", "postgresql://archery:archery_pass@localhost:5433/archery_db")
     sqlalchemy_echo: bool = False
     database_pool_min_size: int = 5
     database_pool_max_size: int = 20
