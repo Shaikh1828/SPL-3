@@ -525,4 +525,87 @@ class ErrorResponse(BaseModel):
     timestamp: Optional[datetime]
 
 
+# Model Training Schemas
+class TrainingStartRequest(BaseModel):
+    """Request to initiate YOLO model training."""
+    epochs: int = Field(default=3, ge=1, le=100, description="Number of epochs to train")
+    batch_size: int = Field(default=4, ge=1, le=64, description="Batch size")
+    imgsz: int = Field(default=896, ge=320, le=1280, description="Image resolution")
+    device: str = Field(default="cpu", description="Device (cpu or cuda/0)")
+    resume: bool = Field(default=False, description="Resume from previous checkpoint")
 
+
+class DatasetInfo(BaseModel):
+    """Available dataset statistics and metadata."""
+    name: str = "Archery Scoring Dataset"
+    path: str = "Data"
+    data_yaml: str = "Data/data.yaml"
+    train_images: int = 0
+    val_images: int = 0
+    test_images: int = 0
+    total_images: int = 0
+    classes: List[str] = []
+    status: str = "ready"
+
+
+class TrainingLossMetrics(BaseModel):
+    """Training loss components."""
+    box_loss: Optional[float] = None
+    cls_loss: Optional[float] = None
+    dfl_loss: Optional[float] = None
+    total_loss: Optional[float] = None
+
+
+class TrainingEvaluationMetrics(BaseModel):
+    """Validation and detection accuracy metrics."""
+    precision: Optional[float] = None
+    recall: Optional[float] = None
+    map50: Optional[float] = None
+    map50_95: Optional[float] = None
+
+
+class TrainingStatusResponse(BaseModel):
+    """Real-time training state and progress."""
+    status: str = "idle"  # idle, running, completed, failed, stopped
+    progress: float = 0.0
+    current_epoch: int = 0
+    total_epochs: int = 0
+    start_time: Optional[str] = None
+    elapsed_seconds: int = 0
+    eta_seconds: Optional[int] = None
+    loss: Optional[TrainingLossMetrics] = None
+    metrics: Optional[TrainingEvaluationMetrics] = None
+    dataset: Optional[DatasetInfo] = None
+    best_weights: Optional[str] = None
+    last_checkpoint: Optional[str] = None
+    weights_exist: bool = False
+    last_trained_at: Optional[str] = None
+    logs: List[str] = []
+    error: Optional[str] = None
+
+
+class TrainingHistoryItem(BaseModel):
+    """Single epoch performance record from results.csv."""
+    epoch: int
+    time_seconds: Optional[float] = None
+    train_box_loss: Optional[float] = None
+    train_cls_loss: Optional[float] = None
+    train_dfl_loss: Optional[float] = None
+    precision: Optional[float] = None
+    recall: Optional[float] = None
+    map50: Optional[float] = None
+    map50_95: Optional[float] = None
+    val_box_loss: Optional[float] = None
+    val_cls_loss: Optional[float] = None
+    val_dfl_loss: Optional[float] = None
+
+
+class TrainingHistoryResponse(BaseModel):
+    """Epoch progression history for graphs and visualization."""
+    total_epochs: int
+    items: List[TrainingHistoryItem]
+    best_map50: Optional[float] = None
+    best_epoch: Optional[int] = None
+    weights_file: Optional[str] = None
+    weights_size_bytes: Optional[int] = None
+    weights_last_modified: Optional[str] = None

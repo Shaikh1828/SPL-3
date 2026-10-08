@@ -3,14 +3,16 @@ import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, Target, BarChart3, Camera, Users,
   Trophy, Settings, ChevronLeft, ChevronRight, Crosshair, FolderOpen,
-  Activity
+  Activity, BrainCircuit
 } from 'lucide-react'
 import { useState } from 'react'
+import { SidebarTrainingPanel } from '@/components/training/SidebarTrainingPanel'
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/scoring', icon: Target, label: 'Scoring' },
   { to: '/batch-testing', icon: FolderOpen, label: 'Batch Scorer' },
+  { to: '/training', icon: BrainCircuit, label: 'Model Training' },
   { to: '/reports', icon: BarChart3, label: 'Reports' },
   { to: '/cameras', icon: Camera, label: 'Cameras' },
   { to: '/tournaments', icon: Trophy, label: 'Tournaments' },
@@ -26,7 +28,7 @@ export function Sidebar() {
     <aside
       className={cn(
         'flex flex-col h-full bg-navy-900 border-r border-navy-700 transition-all duration-300',
-        collapsed ? 'w-16' : 'w-60'
+        collapsed ? 'w-16' : 'w-64'
       )}
     >
       {/* Logo */}
@@ -43,14 +45,14 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
+      <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
         {navItems.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group',
+                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 group',
                 isActive
                   ? 'bg-gold-500/15 text-gold-400 border border-gold-500/20'
                   : 'text-slate-400 hover:text-slate-100 hover:bg-navy-700/50'
@@ -62,6 +64,9 @@ export function Sidebar() {
           </NavLink>
         ))}
       </nav>
+
+      {/* Auto-Training Panel in Left Nav Bar */}
+      <SidebarTrainingPanel collapsed={collapsed} />
 
       {/* Collapse toggle */}
       <div className="p-2 border-t border-navy-700">
