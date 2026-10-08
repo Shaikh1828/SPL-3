@@ -24,10 +24,14 @@ import {
   Legend,
 } from 'recharts'
 import { useTrainingStore } from '@/store/trainingStore'
+import { useAuthStore } from '@/store/authStore'
 import { trainingApi } from '@/api/training'
 import { cn } from '@/lib/utils'
 
 export default function ModelTrainingPage() {
+  const user = useAuthStore((s) => s.user)
+  const canTrain = user?.role === 'admin' || user?.role === 'scorer'
+
   const {
     status,
     progress,
@@ -255,24 +259,38 @@ export default function ModelTrainingPage() {
           <div className="flex items-center gap-3">
             {isRunning ? (
               <button
+                disabled={!canTrain}
                 onClick={() => stopTraining()}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all shadow-lg active:scale-95"
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all shadow-lg active:scale-95 disabled:opacity-50"
               >
                 <Square className="w-4 h-4 fill-current" />
                 Abort Training
               </button>
             ) : (
               <button
-                disabled={isStarting}
+                disabled={!canTrain || isStarting}
                 onClick={handleStart}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm bg-gradient-to-r from-gold-500 via-amber-500 to-gold-400 hover:from-gold-400 hover:to-amber-300 text-navy-950 shadow-lg shadow-gold-500/25 transition-all duration-200 active:scale-95 disabled:opacity-60 cursor-pointer"
+                className={cn(
+                  'flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 active:scale-95',
+                  canTrain
+                    ? 'bg-gradient-to-r from-gold-500 via-amber-500 to-gold-400 hover:from-gold-400 hover:to-amber-300 text-navy-950 shadow-lg shadow-gold-500/25 cursor-pointer disabled:opacity-60'
+                    : 'bg-navy-900 text-slate-500 cursor-not-allowed border border-navy-700'
+                )}
+                title={!canTrain ? 'Requires Admin or Scorer role to trigger training' : undefined}
               >
                 <Play className="w-4 h-4 fill-current" />
-                {isStarting ? 'Initiating Pipeline...' : `Train Model (${selectedEpochs} Epochs)`}
+                {!canTrain ? 'Train (Admin/Scorer Only)' : isStarting ? 'Initiating Pipeline...' : `Train Model (${selectedEpochs} Epochs)`}
               </button>
             )}
           </div>
         </div>
+
+        {/* Non-authorized role alert */}
+        {!canTrain && (
+          <div className="text-xs text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">
+            ℹ️ You are viewing Model Training in spectator/read-only mode. Training models and reloading weights requires Admin or Scorer privileges.
+          </div>
+        )}
 
         {/* Hyperparameter Preset Badges */}
         <div className="flex flex-wrap items-center gap-4 pt-3 border-t border-navy-700/60 text-xs">

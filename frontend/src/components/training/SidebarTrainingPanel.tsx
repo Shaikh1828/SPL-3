@@ -16,6 +16,7 @@ import {
   Check,
 } from 'lucide-react'
 import { useTrainingStore } from '@/store/trainingStore'
+import { useAuthStore } from '@/store/authStore'
 import { cn } from '@/lib/utils'
 
 interface SidebarTrainingPanelProps {
@@ -48,6 +49,9 @@ export function SidebarTrainingPanel({ collapsed }: SidebarTrainingPanelProps) {
   const [showLogs, setShowLogs] = useState(false)
   const [showFlyout, setShowFlyout] = useState(false)
   const [isMinimized, setIsMinimized] = useState(true)
+
+  const user = useAuthStore((s) => s.user)
+  const canTrain = user?.role === 'admin' || user?.role === 'scorer'
 
   // Start polling when mounted
   useEffect(() => {
@@ -147,15 +151,21 @@ export function SidebarTrainingPanel({ collapsed }: SidebarTrainingPanelProps) {
               </div>
 
               <button
-                disabled={isRunning || isStarting}
+                disabled={!canTrain || isRunning || isStarting}
                 onClick={() => {
                   startTraining({ epochs: selectedEpochs })
                   setShowFlyout(false)
                 }}
-                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg font-bold text-xs bg-gold-500 hover:bg-gold-400 text-navy-950 transition-all"
+                className={cn(
+                  'w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg font-bold text-xs transition-all',
+                  canTrain
+                    ? 'bg-gold-500 hover:bg-gold-400 text-navy-950 shadow-md'
+                    : 'bg-navy-800 text-slate-500 cursor-not-allowed border border-navy-700'
+                )}
+                title={!canTrain ? 'Requires Admin or Scorer role to trigger training' : undefined}
               >
                 <Play className="w-3.5 h-3.5 fill-current" />
-                {isRunning ? 'Training...' : 'Train Model'}
+                {!canTrain ? 'Train (Admin/Scorer Only)' : isRunning ? 'Training...' : 'Train Model'}
               </button>
 
               <div className="mt-2 text-center">
@@ -329,11 +339,17 @@ export function SidebarTrainingPanel({ collapsed }: SidebarTrainingPanelProps) {
             {/* Single-Click Auto Train Button */}
             <button
               onClick={() => startTraining({ epochs: selectedEpochs })}
-              disabled={isStarting}
-              className="w-full group/btn relative flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg font-bold text-xs bg-gradient-to-r from-gold-500 via-amber-500 to-gold-500 bg-size-200 hover:bg-right text-navy-950 shadow-md shadow-gold-500/20 hover:shadow-gold-500/30 transition-all duration-300 active:scale-[0.98] disabled:opacity-60 cursor-pointer"
+              disabled={!canTrain || isStarting}
+              className={cn(
+                'w-full group/btn relative flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg font-bold text-xs transition-all duration-300',
+                canTrain
+                  ? 'bg-gradient-to-r from-gold-500 via-amber-500 to-gold-500 bg-size-200 hover:bg-right text-navy-950 shadow-md shadow-gold-500/20 hover:shadow-gold-500/30 active:scale-[0.98] cursor-pointer disabled:opacity-60'
+                  : 'bg-navy-800 text-slate-500 cursor-not-allowed border border-navy-700'
+              )}
+              title={!canTrain ? 'Requires Admin or Scorer role to trigger training' : undefined}
             >
-              <Flame className="w-3.5 h-3.5 fill-navy-950 text-navy-950 transition-transform group-hover/btn:scale-110" />
-              <span>{isStarting ? 'Starting...' : 'Train Model'}</span>
+              <Flame className="w-3.5 h-3.5 fill-current transition-transform group-hover/btn:scale-110" />
+              <span>{!canTrain ? 'Train (Admin/Scorer Only)' : isStarting ? 'Starting...' : 'Train Model'}</span>
             </button>
           </div>
         )}

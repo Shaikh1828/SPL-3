@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 import structlog
 
-from src.dependencies import get_optional_user
+from src.dependencies import get_optional_user, require_roles
 from src.models.user import User
 from src.schemas import (
     TrainingStartRequest,
@@ -86,10 +86,11 @@ async def get_training_history(
 @router.post("/start", response_model=TrainingStatusResponse)
 async def start_training(
     payload: TrainingStartRequest = TrainingStartRequest(),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User = Depends(require_roles(["admin", "scorer"])),
 ):
     """
     Start automatic training on the available archery dataset.
+    Requires admin or scorer role.
     """
     try:
         training_service.start_training(
@@ -120,10 +121,11 @@ async def start_training(
 
 @router.post("/stop", response_model=TrainingStatusResponse)
 async def stop_training(
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User = Depends(require_roles(["admin", "scorer"])),
 ):
     """
     Stop the currently running training pipeline.
+    Requires admin or scorer role.
     """
     try:
         training_service.stop_training()
@@ -138,10 +140,11 @@ async def stop_training(
 
 @router.post("/reload")
 async def reload_model(
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User = Depends(require_roles(["admin", "scorer"])),
 ):
     """
     Hot-reload newly trained best.pt weights into live scoring service.
+    Requires admin or scorer role.
     """
     try:
         res = training_service.reload_active_model()

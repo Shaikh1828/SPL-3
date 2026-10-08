@@ -59,12 +59,12 @@ class UserListResponse(BaseModel):
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 
-def require_admin(current_user: User) -> User:
-    """Raise 403 if caller is not an admin."""
-    if current_user.role != "admin":
+def require_user_manager(current_user: User) -> User:
+    """Raise 403 if caller is neither admin nor scorer."""
+    if current_user.role not in ["admin", "scorer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
+            detail="Admin or Scorer access required",
         )
     return current_user
 
@@ -83,10 +83,10 @@ async def list_users(
 ):
     """
     List all registered users.
-    Requires admin role.
+    Requires admin or scorer role.
     Supports pagination and optional role / is_active filtering.
     """
-    require_admin(current_user)
+    require_user_manager(current_user)
 
     query = db.query(User)
     if role:
@@ -107,8 +107,8 @@ async def get_user(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Get a single user by ID. Requires admin role."""
-    require_admin(current_user)
+    """Get a single user by ID. Requires admin or scorer role."""
+    require_user_manager(current_user)
 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -125,9 +125,17 @@ async def create_user(
 ):
     """
     Create a new user with a specified role.
-    Requires admin role.
+    - Admin can create any role (admin, scorer, spectator, archer).
+    - Scorer can ONLY create spectator or archer roles.
     """
-    require_admin(current_user)
+    require_user_manager(current_user)
+
+    # Scorer restriction: scorers can only add spectators or archers
+    if current_user.role == "scorer" and user_data.role not in ["spectator", "archer"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Scorers can only create spectator or archer accounts",
+        )
 
     # Validate password strength
     is_valid, error_msg = validate_password_strength(user_data.password)
@@ -154,7 +162,7 @@ async def create_user(
     db.commit()
     db.refresh(user)
 
-    logger.info("user_created_by_admin", new_user_id=user.id, role=user.role, by=current_user.username)
+    logger.info("user_created", new_user_id=user.id, role=user.role, by=current_user.username, by_role=current_user.role)
     return user
 
 
@@ -167,21 +175,34 @@ async def update_user(
 ):
     """
     Update a user's role or active status.
-    Requires admin role.
-    Admins cannot demote themselves.
+    - Admin can update any user (cannot demote self).
+    - Scorer can only update spectator or archer accounts, and cannot assign admin or scorer roles.
     """
-    require_admin(current_user)
+    require_user_manager(current_user)
 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    # Prevent self-demotion
+    # Prevent self-demotion for admin
     if user.id == current_user.id and update_data.role and update_data.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Admins cannot remove their own admin role",
         )
+
+    # Scorer restrictions
+    if current_user.role == "scorer":
+        if user.role in ["admin", "scorer"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Scorers cannot modify admin or scorer accounts",
+            )
+        if update_data.role and update_data.role not in ["spectator", "archer"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Scorers can only assign spectator or archer roles",
+            )
 
     if update_data.role is not None:
         user.role = update_data.role
@@ -192,11 +213,12 @@ async def update_user(
     db.refresh(user)
 
     logger.info(
-        "user_updated_by_admin",
+        "user_updated",
         user_id=user_id,
         new_role=user.role,
         is_active=user.is_active,
         by=current_user.username,
+        by_role=current_user.role,
     )
     return user
 
@@ -209,23 +231,29 @@ async def deactivate_user(
 ):
     """
     Soft-delete a user (sets is_active = False).
-    Admins cannot deactivate themselves.
-    Requires admin role.
+    - Admins cannot deactivate themselves.
+    - Scorers can only deactivate spectator or archer accounts.
     """
-    require_admin(current_user)
+    require_user_manager(current_user)
 
     if user_id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Admins cannot deactivate their own account",
+            detail="Users cannot deactivate their own account",
         )
 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    if current_user.role == "scorer" and user.role in ["admin", "scorer"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Scorers cannot deactivate admin or scorer accounts",
+        )
+
     user.is_active = False
     db.commit()
 
-    logger.info("user_deactivated_by_admin", user_id=user_id, by=current_user.username)
+    logger.info("user_deactivated", user_id=user_id, by=current_user.username, by_role=current_user.role)
     return {"success": True, "message": f"User '{user.username}' has been deactivated"}

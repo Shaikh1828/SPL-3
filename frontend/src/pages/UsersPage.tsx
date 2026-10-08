@@ -27,12 +27,18 @@ function RoleBadge({ role }: { role: UserRole }) {
 }
 
 // ─── Add User Modal ───────────────────────────────────────────────────────────
-interface AddUserModalProps { onClose: () => void; onSuccess: () => void }
+interface AddUserModalProps {
+  currentUserRole?: UserRole
+  onClose: () => void
+  onSuccess: () => void
+}
 
-function AddUserModal({ onClose, onSuccess }: AddUserModalProps) {
+function AddUserModal({ currentUserRole, onClose, onSuccess }: AddUserModalProps) {
   const [form, setForm] = useState({ username: '', email: '', password: '', role: 'spectator' as UserRole })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  const isScorer = currentUserRole === 'scorer'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,7 +46,7 @@ function AddUserModal({ onClose, onSuccess }: AddUserModalProps) {
     setLoading(true)
     try {
       await usersApi.create(form)
-      toast.success(`User '${form.username}' created`)
+      toast.success(`User '${form.username}' created with role '${form.role}'`)
       onSuccess()
       onClose()
     } catch (err: any) {
@@ -63,7 +69,7 @@ function AddUserModal({ onClose, onSuccess }: AddUserModalProps) {
             <label className="block text-sm font-medium text-slate-400 mb-1.5">Username</label>
             <input
               className="input-dark w-full"
-              placeholder="e.g. john_scorer"
+              placeholder="e.g. john_archer"
               value={form.username}
               onChange={(e) => setForm({ ...form, username: e.target.value })}
               required minLength={3}
@@ -96,11 +102,20 @@ function AddUserModal({ onClose, onSuccess }: AddUserModalProps) {
               value={form.role}
               onChange={(e) => setForm({ ...form, role: e.target.value as UserRole })}
             >
-              <option value="spectator">Spectator — Read-only</option>
-              <option value="scorer">Scorer — Record scores</option>
-              <option value="archer">Archer — View own scores</option>
-              <option value="admin">Admin — Full access</option>
+              <option value="spectator">Spectator — Read-only access</option>
+              <option value="archer">Archer — Track personal scores</option>
+              {!isScorer && (
+                <>
+                  <option value="scorer">Scorer — Record and evaluate scores</option>
+                  <option value="admin">Admin — Full system management</option>
+                </>
+              )}
             </select>
+            {isScorer && (
+              <p className="text-[11px] text-amber-400/80 mt-1">
+                Scorers have permission to register new Spectators and Archers.
+              </p>
+            )}
           </div>
 
           {error && (
@@ -124,12 +139,19 @@ function AddUserModal({ onClose, onSuccess }: AddUserModalProps) {
 }
 
 // ─── Inline Edit Row ──────────────────────────────────────────────────────────
-interface EditRowProps { user: User; onSave: (u: User) => void; onCancel: () => void }
+interface EditRowProps {
+  user: User
+  currentUserRole?: UserRole
+  onSave: (u: User) => void
+  onCancel: () => void
+}
 
-function EditRow({ user, onSave, onCancel }: EditRowProps) {
+function EditRow({ user, currentUserRole, onSave, onCancel }: EditRowProps) {
   const [role, setRole] = useState<UserRole>(user.role)
   const [isActive, setIsActive] = useState(user.is_active)
   const [loading, setLoading] = useState(false)
+
+  const isScorer = currentUserRole === 'scorer'
 
   const handleSave = async () => {
     setLoading(true)
@@ -137,8 +159,8 @@ function EditRow({ user, onSave, onCancel }: EditRowProps) {
       const updated = await usersApi.update(user.id, { role, is_active: isActive })
       toast.success('User updated')
       onSave(updated)
-    } catch {
-      toast.error('Update failed')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? 'Update failed')
     } finally {
       setLoading(false)
     }
@@ -164,9 +186,13 @@ function EditRow({ user, onSave, onCancel }: EditRowProps) {
           onChange={(e) => setRole(e.target.value as UserRole)}
         >
           <option value="spectator">spectator</option>
-          <option value="scorer">scorer</option>
           <option value="archer">archer</option>
-          <option value="admin">admin</option>
+          {!isScorer && (
+            <>
+              <option value="scorer">scorer</option>
+              <option value="admin">admin</option>
+            </>
+          )}
         </select>
       </td>
       <td className="px-6 py-4">
@@ -207,6 +233,8 @@ export default function UsersPage() {
   const [activeFilter, setActiveFilter] = useState<boolean | undefined>(undefined)
 
   const isAdmin = currentUser?.role === 'admin'
+  const isScorer = currentUser?.role === 'scorer'
+  const canManageUsers = isAdmin || isScorer
 
   const loadUsers = useCallback(async () => {
     setLoading(true)
@@ -234,9 +262,19 @@ export default function UsersPage() {
       await usersApi.deactivate(user.id)
       toast.success(`'${user.username}' deactivated`)
       loadUsers()
-    } catch {
-      toast.error('Failed to deactivate')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? 'Failed to deactivate')
     }
+  }
+
+  const canEditUser = (targetUser: User) => {
+    if (targetUser.id === currentUser?.id) return false
+    if (isAdmin) return true
+    if (isScorer) {
+      // Scorers can only edit/manage spectator and archer roles
+      return targetUser.role === 'spectator' || targetUser.role === 'archer'
+    }
+    return false
   }
 
   const filtered = users.filter(
@@ -253,14 +291,14 @@ export default function UsersPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-100">User Management</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            {total} registered user{total !== 1 ? 's' : ''} · Admin-only panel
+            {total} registered user{total !== 1 ? 's' : ''} · {isAdmin ? 'Admin Console' : isScorer ? 'Scorer User Manager' : 'User Directory'}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={loadUsers} disabled={loading} className="btn-ghost flex items-center gap-2 text-sm">
             <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
           </button>
-          {isAdmin && (
+          {canManageUsers && (
             <button onClick={() => setShowAddModal(true)} className="btn-primary flex items-center gap-2">
               <UserPlus className="w-4 h-4" /> Add User
             </button>
@@ -306,10 +344,10 @@ export default function UsersPage() {
       {/* Table */}
       <div className="flex-1 overflow-y-auto">
         <div className="glass-card">
-          {!isAdmin && (
+          {!canManageUsers && (
             <div className="flex items-center gap-2 text-amber-400 text-sm bg-amber-500/10 border-b border-amber-500/20 px-6 py-3">
               <AlertCircle className="w-4 h-4" />
-              You need admin privileges to manage users.
+              You have read-only access to the user directory.
             </div>
           )}
           <table className="w-full text-left text-sm">
@@ -346,6 +384,7 @@ export default function UsersPage() {
                     <EditRow
                       key={u.id}
                       user={u}
+                      currentUserRole={currentUser?.role}
                       onSave={(updated) => {
                         setUsers((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
                         setEditingId(null)
@@ -389,7 +428,7 @@ export default function UsersPage() {
                         {new Date(u.created_at).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        {isAdmin && u.id !== currentUser?.id && (
+                        {canEditUser(u) && (
                           <div className="flex items-center justify-end gap-2">
                             <button
                               onClick={() => setEditingId(u.id)}
@@ -421,6 +460,7 @@ export default function UsersPage() {
       {/* Add User Modal */}
       {showAddModal && (
         <AddUserModal
+          currentUserRole={currentUser?.role}
           onClose={() => setShowAddModal(false)}
           onSuccess={loadUsers}
         />
