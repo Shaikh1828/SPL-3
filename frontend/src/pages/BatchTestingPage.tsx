@@ -385,18 +385,23 @@ export default function BatchTestingPage() {
                 </div>
               )}
 
-              <div className="flex items-center gap-3 pt-2">
-                <input
-                  type="checkbox"
-                  id="saveToSession"
-                  checked={saveToSession}
-                  onChange={e => setSaveToSession(e.target.checked)}
-                  className="w-4 h-4 accent-gold-500 rounded border-navy-700 bg-navy-800"
-                  disabled={isLoading}
-                />
-                <label htmlFor="saveToSession" className="text-sm font-medium text-slate-300 cursor-pointer">
-                  Save scored results to the active session database
-                </label>
+              <div className="flex flex-col gap-1 pt-2">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="saveToSession"
+                    checked={saveToSession}
+                    onChange={e => setSaveToSession(e.target.checked)}
+                    className="w-4 h-4 accent-gold-500 rounded border-navy-700 bg-navy-800 cursor-pointer"
+                    disabled={isLoading}
+                  />
+                  <label htmlFor="saveToSession" className="text-sm font-medium text-slate-300 cursor-pointer">
+                    Save scored points & arrows directly to active session database
+                  </label>
+                </div>
+                <p className="text-[11px] text-slate-500 pl-7">
+                  Unchecked (recommended for test datasets): Runs fast dry-run AI evaluation without modifying live match records.
+                </p>
               </div>
             </div>
 

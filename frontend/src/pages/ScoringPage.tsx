@@ -238,7 +238,7 @@ export default function ScoringPage() {
   }
 
   // Active Archer & Current End Scores
-  const activeArcher = archers.find(a => a.lane_number === activeLane) || null
+  const activeArcher = archers.find(a => a.lane_number === activeLane) || (archers.length > 0 ? archers[0] : null)
   const currentEndScores = allScores.filter(
     s => activeArcher && s.session_archer_id === activeArcher.id && s.round === currentEnd
   )
@@ -333,6 +333,25 @@ export default function ScoringPage() {
       await loadSessionData()
     } catch (err: any) {
       toast.error(err.response?.data?.detail || 'Failed to record arrow score')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // 1b. Rapid Score Pad In-Place Slot Update
+  const handleUpdateSlotScore = async (scoreId: number, points: number, zone: number, isX: boolean = false) => {
+    if (!activeSession || !activeArcher) return
+    setIsSubmitting(true)
+    try {
+      await scoresApi.override(scoreId, {
+        zone: zone,
+        points: points,
+        reason: 'Rapid ScorePad manual slot adjustment',
+      })
+      toast.success(`Score updated: ${isX ? 'X (10 pts)' : points === 0 ? 'Miss' : `${points} pts`}`)
+      await loadSessionData()
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to update arrow score')
     } finally {
       setIsSubmitting(false)
     }
@@ -442,15 +461,63 @@ export default function ScoringPage() {
     }
   }
 
-  // 7. Complete Session
+  // 7. Complete Session & Advance All Archers
   const handleEndSession = async () => {
-    if (!activeSession || !window.confirm('Mark this session as completed?')) return
+    if (!activeSession || !window.confirm('Mark this session as completed and advance all archers to the next session?')) return
+    setIsSubmitting(true)
+    const toastId = toast.loading('Completing session and advancing archers...')
     try {
+      // 1. Mark current session completed
       await sessionsApi.updateStatus(activeSession.id, 'completed')
-      toast.success('Session marked as completed!')
+
+      // 2. Look for existing next session or create a new round session
+      const currentTourneyId = activeTournament?.id || activeSession.tournament_id
+      const freshSessions = await sessionsApi.listForTournament(currentTourneyId)
+      const sessionList: Session[] = Array.isArray(freshSessions)
+        ? freshSessions
+        : (freshSessions && Array.isArray((freshSessions as any).items) ? (freshSessions as any).items : [])
+
+      let nextSession = sessionList.find(
+        (s) => s.id !== activeSession.id && (s.round_number === (activeSession.round_number + 1) || s.status !== 'completed')
+      )
+
+      if (!nextSession) {
+        const nextRoundNum = (activeSession.round_number || 1) + 1
+        nextSession = await sessionsApi.create(currentTourneyId, {
+          name: `Round ${nextRoundNum}`,
+          round_number: nextRoundNum,
+          num_lanes: activeSession.num_lanes || 6,
+          arrows_per_round: activeSession.arrows_per_round || 6,
+        })
+      }
+
+      // 3. Register all current archers into next session
+      if (nextSession) {
+        const targetArchers = await sessionsApi.listArchers(nextSession.id).catch(() => [])
+        const targetNames = new Set((Array.isArray(targetArchers) ? targetArchers : []).map((a: SessionArcher) => a.archer_name))
+
+        for (const archer of archers) {
+          if (!targetNames.has(archer.archer_name)) {
+            await sessionsApi.registerArcher(nextSession.id, {
+              archer_name: archer.archer_name,
+              lane_number: archer.lane_number,
+            }).catch((err) => console.warn('Auto-register archer warning:', err))
+          }
+        }
+
+        setActiveSession(nextSession)
+        setCurrentEnd(1)
+        setStagedRoundData(null)
+        toast.success(`Session completed! All ${archers.length} archers advanced to ${nextSession.name}`, { id: toastId })
+      } else {
+        toast.success('Session marked as completed!', { id: toastId })
+      }
+
       await loadTournamentsAndSessions()
-    } catch {
-      toast.error('Failed to update session status')
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to complete session transition', { id: toastId })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -961,6 +1028,7 @@ export default function ScoringPage() {
                   endScores={currentEndScores}
                   isSubmitting={isSubmitting}
                   onRecordScore={handleRapidScore}
+                  onUpdateSlotScore={handleUpdateSlotScore}
                   onUndoLastScore={handleUndoLastScore}
                   onNextEnd={() => setCurrentEnd(currentEnd + 1)}
                   onPrevEnd={() => setCurrentEnd(Math.max(1, currentEnd - 1))}
@@ -1186,6 +1254,7 @@ export default function ScoringPage() {
           setSelectedScore(null)
         }}
         score={selectedScore}
+        allScores={allScores}
         onOverrideSuccess={async () => {
           await loadSessionData()
         }}

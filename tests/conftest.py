@@ -137,20 +137,42 @@ def auth_headers(test_client: TestClient, test_user: User):
 
 
 @pytest.fixture(scope="function")
-def admin_auth_headers(test_client: TestClient, test_admin_user: User):
-    """
-    Get authentication headers for admin user.
+def test_spectator_user(test_db: Session):
+    """Create a test spectator user."""
+    user = User(
+        username="spectator",
+        email="spectator@example.com",
+        password_hash=hash_password("Spectator123!"),
+        role="spectator",
+        is_active=True,
+    )
+    test_db.add(user)
+    test_db.commit()
+    test_db.refresh(user)
+    return user
 
-    Scope: function
-    """
+
+@pytest.fixture(scope="function")
+def admin_auth_headers(test_client: TestClient, test_admin_user: User):
+    """Get authentication headers for admin user."""
     response = test_client.post(
         "/api/auth/login",
         json={"username": "admin", "password": "AdminPassword123!"},
     )
-    
     assert response.status_code == 200
     tokens = response.json()
-    
+    return {"Authorization": f"Bearer {tokens['access_token']}"}
+
+
+@pytest.fixture(scope="function")
+def spectator_auth_headers(test_client: TestClient, test_spectator_user: User):
+    """Get authentication headers for spectator user."""
+    response = test_client.post(
+        "/api/auth/login",
+        json={"username": "spectator", "password": "Spectator123!"},
+    )
+    assert response.status_code == 200
+    tokens = response.json()
     return {"Authorization": f"Bearer {tokens['access_token']}"}
 
 

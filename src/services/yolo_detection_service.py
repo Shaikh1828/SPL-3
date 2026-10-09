@@ -91,17 +91,17 @@ class YOLOArrowDetectionService:
             )
             
         try:
-            # Preprocess using CV service to get standard views
-            pp = self.cv_fallback_service._preprocess(image)
-            
-            # Run YOLO inference
-            results = self.model.predict(pp["image"], conf=0.25, verbose=False)
+            # Run YOLO inference directly on image to preserve unscaled pixel coordinates
+            results = self.model.predict(image, conf=0.25, verbose=False)
             result = results[0]
             
-            # Parse detections
+            # Parse detections (already in original image coordinates)
             boxes = result.boxes.xyxy.cpu().numpy()
             confs = result.boxes.conf.cpu().numpy()
             classes = result.boxes.cls.cpu().numpy()
+            
+            # Preprocess for CV fallback if needed
+            pp = self.cv_fallback_service._preprocess(image)
             
             # Detect target geometry from rings
             target = self._detect_target_from_yolo(boxes, confs, classes, image.shape)
@@ -170,33 +170,50 @@ class YOLOArrowDetectionService:
     ) -> Optional[TargetInfo]:
         """
         Calculates target center and radius using YOLO ring detections.
-        
-        Class map:
-        0: '2_ring' (White outer) -> ratio 0.864
-        1: '4_ring' (Black inner) -> ratio 0.672
-        2: '6_ring' (Blue inner)  -> ratio 0.480
-        3: '7_ring' (Red outer)   -> ratio 0.384
-        5: 'bullseye' (Yellow)    -> ratio 0.192
+        Maps classes dynamically by name.
         """
         h, w = img_shape[:2]
         
         # Ring proportions definitions (WA Standard boundaries)
-        ring_ratios = {
-            5: 0.192,  # bullseye
-            3: 0.384,  # 7_ring
-            2: 0.480,  # 6_ring
-            1: 0.672,  # 4_ring
-            0: 0.864,  # 2_ring
+        name_to_ratio = {
+            "bullseye": 0.192,  # Gold yellow (10/9)
+            "7_ring": 0.384,    # Red (8/7)
+            "6_ring": 0.480,    # Blue (6)
+            "4_ring": 0.672,    # Black (4)
+            "2_ring": 0.864,    # White (2)
         }
+        
+        # Fallback numeric map if names not set in model
+        fallback_ratios = {
+            5: 0.192,
+            3: 0.384,
+            2: 0.480,
+            1: 0.672,
+            0: 0.864,
+        }
+        
+        model_names = getattr(self.model, "names", {})
         
         centers = []
         outer_radii_estimates = []
         confidences = []
         detected_rings = 0
+        bullseye_center = None
         
         for i in range(len(classes)):
             cls_id = int(classes[i])
-            if cls_id not in ring_ratios:
+            cls_name = str(model_names.get(cls_id, "")).lower()
+            
+            ratio = None
+            for rname, rval in name_to_ratio.items():
+                if rname in cls_name:
+                    ratio = rval
+                    break
+                    
+            if ratio is None and cls_id in fallback_ratios:
+                ratio = fallback_ratios[cls_id]
+                
+            if ratio is None:
                 continue
                 
             detected_rings += 1
@@ -204,60 +221,55 @@ class YOLOArrowDetectionService:
             conf = confs[i]
             
             # Compute center of the detected bounding box
-            cx = (bx[0] + bx[2]) / 2.0
-            cy = (bx[1] + bx[3]) / 2.0
-            centers.append((cx, cy))
-            confidences.append(conf)
+            cx = float((bx[0] + bx[2]) / 2.0)
+            cy = float((bx[1] + bx[3]) / 2.0)
             
-            # Compute average semi-axis (radius) of the bounding box
-            bw = bx[2] - bx[0]
-            bh = bx[3] - bx[1]
+            if "bullseye" in cls_name or cls_id == 5:
+                bullseye_center = (cx, cy)
+                
+            centers.append((cx, cy))
+            confidences.append(float(conf))
+            
+            # Compute average radius of the bounding box
+            bw = float(bx[2] - bx[0])
+            bh = float(bx[3] - bx[1])
             box_r = (bw + bh) / 4.0
             
             # Extrapolate target outer radius: outer_radius = box_r / ratio
-            ratio = ring_ratios[cls_id]
             est_outer_r = box_r / ratio
             outer_radii_estimates.append(est_outer_r)
             
         if not centers:
             return None
             
-        # Average of centers
-        avg_cx = sum(c[0] for c in centers) / len(centers)
-        avg_cy = sum(c[1] for c in centers) / len(centers)
+        # If bullseye center is detected, it is the true target center
+        if bullseye_center:
+            avg_cx, avg_cy = bullseye_center
+        else:
+            avg_cx = sum(c[0] for c in centers) / len(centers)
+            avg_cy = sum(c[1] for c in centers) / len(centers)
         
         # Average of outer radius estimates
         avg_outer_r = sum(r for r in outer_radii_estimates) / len(outer_radii_estimates)
         avg_conf = sum(confidences) / len(confidences)
         
-        # Estimate target ellipse aspect ratios (perspective-aware)
-        a_outer = avg_outer_r
-        b_outer = avg_outer_r
-        
-        # Look for the largest bounding box to determine target orientation and aspect ratio
-        max_box_idx = -1
-        max_box_area = -1
+        # Find largest bounding box to estimate aspect ratio
+        max_bw, max_bh = 0.0, 0.0
+        max_area = 0.0
         for i in range(len(classes)):
-            cls_id = int(classes[i])
-            if cls_id in ring_ratios:
-                bx = boxes[i]
-                area = (bx[2] - bx[0]) * (bx[3] - bx[1])
-                if area > max_box_area:
-                    max_box_area = area
-                    max_box_idx = i
-                    
+            bx = boxes[i]
+            area = float((bx[2] - bx[0]) * (bx[3] - bx[1]))
+            if area > max_area:
+                max_area = area
+                max_bw = float(bx[2] - bx[0])
+                max_bh = float(bx[3] - bx[1])
+                
+        ratio_ab = (max_bw / max_bh) if max_bh > 0 else 1.0
+        ratio_ab = max(0.80, min(1.25, ratio_ab))  # Clamp to reasonable perspective
+        
+        a_outer = avg_outer_r * math.sqrt(ratio_ab)
+        b_outer = avg_outer_r / math.sqrt(ratio_ab)
         angle = 0.0
-        if max_box_idx != -1:
-            bx = boxes[max_box_idx]
-            bw = bx[2] - bx[0]
-            bh = bx[3] - bx[1]
-            if bw > 0 and bh > 0:
-                # Target is usually slightly elliptical due to camera angle
-                ratio_ab = bw / bh
-                if ratio_ab > 1.0:
-                    a_outer = avg_outer_r * ratio_ab
-                else:
-                    b_outer = avg_outer_r / ratio_ab
                     
         return TargetInfo(
             center_x=float(avg_cx),
@@ -286,9 +298,9 @@ class YOLOArrowDetectionService:
         arrows = []
         h, w = image.shape[:2]
         
-        # Dynamically determine arrow class IDs from model metadata (supports Data2 class 0 and legacy class 4)
+        model_names = getattr(self.model, "names", {})
         arrow_classes = {
-            k for k, v in getattr(self.model, "names", {}).items()
+            k for k, v in model_names.items()
             if "arrow" in str(v).lower()
         }
         if not arrow_classes:
@@ -315,7 +327,7 @@ class YOLOArrowDetectionService:
                 continue
                 
             # Local refinement inside arrow bounding box
-            tip = self._refine_arrow_tip_locally(pp, x1, y1, x2, y2, target)
+            tip = self._refine_arrow_tip_locally(image, x1, y1, x2, y2, target)
             
             if tip:
                 tx, ty, angle_deg = tip
@@ -328,14 +340,13 @@ class YOLOArrowDetectionService:
                 ))
             else:
                 # BBox fallback: choose the box endpoint closest to target center
-                center = np.array([target.center_x, target.center_y])
                 corners = [
                     (x1, y1), (x2, y1), (x1, y2), (x2, y2),
                     ((x1+x2)/2.0, y1), ((x1+x2)/2.0, y2),
                     (x1, (y1+y2)/2.0), (x2, (y1+y2)/2.0)
                 ]
                 dists = [math.hypot(c[0] - target.center_x, c[1] - target.center_y) for c in corners]
-                best_idx = np.argmin(dists)
+                best_idx = int(np.argmin(dists))
                 tx, ty = corners[best_idx]
                 
                 # Approximate angle from center direction
@@ -346,7 +357,7 @@ class YOLOArrowDetectionService:
                 arrows.append(ArrowInfo(
                     tip_x=float(tx),
                     tip_y=float(ty),
-                    confidence=float(conf * 0.8),  # Reduce confidence for fallback
+                    confidence=float(conf * 0.85),
                     method="yolo11_bbox_fallback",
                     shaft_angle=angle_deg,
                 ))
@@ -372,14 +383,20 @@ class YOLOArrowDetectionService:
         return tip_x, tip_y, angle_deg
 
     def _refine_arrow_tip_locally(
-        self, pp: Dict[str, Any], x1: int, y1: int, x2: int, y2: int, target: TargetInfo
+        self, image: np.ndarray, x1: int, y1: int, x2: int, y2: int, target: TargetInfo
     ) -> Optional[Tuple[float, float, float]]:
         """
         Runs local line detection (HoughLinesP) and contour aspect filters inside
         the crop defined by the YOLO arrow bounding box to find the exact tip.
         """
-        enhanced = pp["enhanced_bilateral"]
-        edges = cv2.Canny(enhanced[y1:y2, x1:x2], 30, 110)
+        crop = image[y1:y2, x1:x2]
+        if crop.size == 0 or crop.shape[0] < 5 or crop.shape[1] < 5:
+            return None
+            
+        crop_gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if len(crop.shape) == 3 else crop
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(crop_gray)
+        edges = cv2.Canny(enhanced, 30, 110)
         
         # Detect lines inside the cropped arrow box
         lines = cv2.HoughLinesP(

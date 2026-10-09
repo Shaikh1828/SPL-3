@@ -90,40 +90,41 @@ def seed_tournaments(db: Session, admin_user: User):
 
     now = datetime.utcnow()
     tournaments_data = [
-        # --- ONGOING TOURNAMENTS ---
+        # --- ONGOING TOURNAMENTS WITH ELIMINATION STAGES ---
         {
             "name": "National Outdoor Archery Championship 2026",
             "location": "National Sports Stadium Range, Dhaka",
-            "description": "Premiere 70m national outdoor archery championship featuring World Cup archers and live AI target vision.",
+            "description": "Premiere 70m national outdoor archery championship featuring 12-archer qualification, semi-finals cut, and medal finals.",
             "start_date": now - timedelta(days=1),
             "end_date": now + timedelta(days=3),
             "sessions": [
-                {"name": "Session 1 - Recurve Men & Women 720 Round", "round_number": 1, "num_lanes": 6, "arrows_per_round": 6, "status": "active"},
-                {"name": "Session 2 - Compound 50m Elimination", "round_number": 2, "num_lanes": 6, "arrows_per_round": 6, "status": "active"},
-                {"name": "Session 3 - Gold & Bronze Medal Finals", "round_number": 3, "num_lanes": 4, "arrows_per_round": 3, "status": "paused"},
+                {"name": "Session 1 - Recurve Men & Women 720 Qualification", "round_number": 1, "num_lanes": 12, "arrows_per_round": 6, "status": "completed"},
+                {"name": "Session 2 - 1/4 & Semi-Final Elimination", "round_number": 2, "num_lanes": 6, "arrows_per_round": 6, "status": "completed"},
+                {"name": "Session 3 - Gold & Bronze Medal Finals", "round_number": 3, "num_lanes": 4, "arrows_per_round": 6, "status": "active"},
             ],
         },
         {
             "name": "Asia Cup Archery Stage 2 - 2026",
             "location": "BKSP Archery Ground, Savar",
-            "description": "Continental stage-2 tournament with international competitors and multi-camera live lane tracking.",
+            "description": "Continental stage-2 tournament with 12 international competitors and multi-camera elimination brackets.",
             "start_date": now - timedelta(hours=18),
             "end_date": now + timedelta(days=2),
             "sessions": [
-                {"name": "Session 1 - Qualification 70m", "round_number": 1, "num_lanes": 6, "arrows_per_round": 6, "status": "active"},
-                {"name": "Session 2 - 1/8 Elimination Finals", "round_number": 2, "num_lanes": 6, "arrows_per_round": 6, "status": "active"},
+                {"name": "Session 1 - Qualification 70m", "round_number": 1, "num_lanes": 12, "arrows_per_round": 6, "status": "completed"},
+                {"name": "Session 2 - 1/8 & Semi-Finals Elimination", "round_number": 2, "num_lanes": 6, "arrows_per_round": 6, "status": "active"},
             ],
         },
         # --- COMPLETED TOURNAMENTS ---
         {
             "name": "Bangladesh Independence Cup 2026",
             "location": "Army Stadium Archery Arena, Dhaka",
-            "description": "Annual Independence Day Invitational. Completed championship with high-scoring finals and podium ceremony.",
+            "description": "Annual Independence Day Invitational. Completed 3-stage championship with qualification cut and medal ceremony.",
             "start_date": now - timedelta(days=14),
             "end_date": now - timedelta(days=10),
             "sessions": [
-                {"name": "Finals - Gold Medal Match", "round_number": 1, "num_lanes": 6, "arrows_per_round": 6, "status": "completed"},
-                {"name": "Semi-Finals - Recurve Elimination", "round_number": 2, "num_lanes": 6, "arrows_per_round": 6, "status": "completed"},
+                {"name": "Stage 1 - Qualification 720", "round_number": 1, "num_lanes": 12, "arrows_per_round": 6, "status": "completed"},
+                {"name": "Stage 2 - Semi-Finals Elimination", "round_number": 2, "num_lanes": 6, "arrows_per_round": 6, "status": "completed"},
+                {"name": "Stage 3 - Gold Medal Finals", "round_number": 3, "num_lanes": 4, "arrows_per_round": 6, "status": "completed"},
             ],
         },
         {
@@ -133,7 +134,8 @@ def seed_tournaments(db: Session, admin_user: User):
             "start_date": now - timedelta(days=32),
             "end_date": now - timedelta(days=28),
             "sessions": [
-                {"name": "Championship Round 720", "round_number": 1, "num_lanes": 6, "arrows_per_round": 6, "status": "completed"},
+                {"name": "Session 1 - Championship Qualification 720", "round_number": 1, "num_lanes": 12, "arrows_per_round": 6, "status": "completed"},
+                {"name": "Session 2 - Medal Match Finals", "round_number": 2, "num_lanes": 4, "arrows_per_round": 6, "status": "completed"},
             ],
         },
         {
@@ -164,7 +166,7 @@ def seed_tournaments(db: Session, admin_user: User):
             "start_date": now + timedelta(days=25),
             "end_date": now + timedelta(days=28),
             "sessions": [
-                {"name": "Collegiate Qualification", "round_number": 1, "num_lanes": 4, "arrows_per_round": 6, "status": "paused"},
+                {"name": "Collegiate Qualification", "round_number": 1, "num_lanes": 6, "arrows_per_round": 6, "status": "paused"},
             ],
         },
     ]
@@ -221,6 +223,8 @@ def seed_tournaments(db: Session, admin_user: User):
                 sessions_to_create.append(sess)
             else:
                 existing_sess.status = s_template["status"]
+                existing_sess.round_number = s_template["round_number"]
+                existing_sess.num_lanes = s_template["num_lanes"]
                 db.commit()
                 sessions_to_create.append(existing_sess)
 
@@ -229,28 +233,48 @@ def seed_tournaments(db: Session, admin_user: User):
 
 
 def seed_session_archers(db: Session, sessions: list):
-    """Register archers across all shooting lanes for every session."""
+    """Register archers across elimination tiers for every session."""
     logger.info("seeding_session_archers")
 
-    competitors = [
+    # 12-Archer Roster
+    all_competitors = [
         (1, "Brady Ellison"),
         (2, "Mete Gazoz"),
         (3, "Kim Woo-jin"),
         (4, "Marcus D'Almeida"),
         (5, "Deepika Kumari"),
         (6, "An San"),
+        (7, "Ruman Shana"),
+        (8, "Casey Kaufhold"),
+        (9, "Md Sagor Islam"),
+        (10, "Zahid Hasan"),
+        (11, "Nasrin Akter"),
+        (12, "Atanu Das"),
     ]
+
+    # Qualified tiers
+    tier_semi_finalists = [all_competitors[0], all_competitors[2], all_competitors[5], all_competitors[1], all_competitors[3], all_competitors[4]]
+    tier_finalists = [all_competitors[0], all_competitors[2], all_competitors[5], all_competitors[1]]
 
     session_archers = []
     for session in sessions:
-        max_lanes = min(session.num_lanes, len(competitors))
-        for lane_idx in range(max_lanes):
-            user_id, archer_name = competitors[lane_idx]
+        s_name_lower = session.name.lower()
+        
+        # Decide which competitor roster qualifies for this stage
+        if session.round_number == 3 or "finals" in s_name_lower or "gold" in s_name_lower:
+            roster = tier_finalists[:session.num_lanes]
+        elif session.round_number == 2 or "semi" in s_name_lower or "elimination" in s_name_lower or "1/4" in s_name_lower:
+            roster = tier_semi_finalists[:session.num_lanes]
+        else:
+            # Qualification round
+            roster = all_competitors[:session.num_lanes]
+
+        for lane_idx, (user_id, archer_name) in enumerate(roster):
             lane_num = lane_idx + 1
 
             existing = db.query(SessionArcher).filter(
                 SessionArcher.session_id == session.id,
-                SessionArcher.lane_number == lane_num,
+                SessionArcher.archer_id == user_id,
             ).first()
 
             if not existing:
@@ -267,6 +291,8 @@ def seed_session_archers(db: Session, sessions: list):
                 db.refresh(sa)
                 session_archers.append(sa)
             else:
+                existing.lane_number = lane_num
+                db.commit()
                 session_archers.append(existing)
 
     logger.info("session_archers_seeded", count=len(session_archers))

@@ -435,6 +435,59 @@ class AIMetrics(BaseModel):
     overridden_count: int
 
 
+class StageFunnelItem(BaseModel):
+    """Stage funnel step metrics."""
+    session_id: int
+    session_name: str
+    round_number: int
+    status: str
+    total_archers: int
+    advanced_count: int
+    eliminated_count: int
+    cut_off_score: Optional[int] = None
+
+
+class ArcherStageScore(BaseModel):
+    """Single stage score breakdown for an archer."""
+    session_id: int
+    session_name: str
+    round_number: int
+    score: int
+    arrows: int
+    average: float
+    rank_in_stage: int
+    advanced: bool
+
+
+class ArcherStageProgressionItem(BaseModel):
+    """Archer's end-to-end journey and elimination status."""
+    archer_id: int
+    archer_name: str
+    qualification_rank: int
+    qualification_score: int
+    stages_reached: List[str]
+    highest_stage: str
+    elimination_status: str  # champion, podium, finalist, eliminated, active
+    elimination_label: str   # e.g., 🥇 Gold Medalist (Champion)
+    stage_scores: List[ArcherStageScore]
+
+
+class StageProgressionResponse(BaseModel):
+    """Tournament-wide stage progression and elimination tree."""
+    tournament_id: int
+    tournament_name: str
+    funnel: List[StageFunnelItem]
+    archers: List[ArcherStageProgressionItem]
+
+
+class AdvanceStageRequest(BaseModel):
+    """Request to advance top qualifiers into the next round."""
+    source_session_id: int
+    target_session_id: int
+    top_qualifiers_count: int = Field(default=4, ge=1, le=32)
+    clear_target: bool = False
+
+
 class TournamentAnalyticsResponse(BaseModel):
     """Comprehensive tournament / session analytics."""
     tournament_id: Optional[int] = None
@@ -449,6 +502,7 @@ class TournamentAnalyticsResponse(BaseModel):
     end_progression: List[EndProgressionItem]
     lane_accuracy: List[LaneAccuracyItem]
     ai_metrics: AIMetrics
+    stage_progression: Optional[StageProgressionResponse] = None
 
 
 class ArcherTournamentHistory(BaseModel):

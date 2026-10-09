@@ -145,6 +145,14 @@ class ReportService:
             "overridden_count": overridden_count,
         }
 
+        # Stage progression & elimination funnel for tournament
+        stage_progression = None
+        if tourney_obj:
+            try:
+                stage_progression = ReportService.get_stage_progression_analytics(db, tourney_obj.id)
+            except Exception as e:
+                logger.warning("failed_computing_stage_progression", tournament_id=tourney_obj.id, error=str(e))
+
         return {
             "tournament_id": tourney_obj.id if tourney_obj else None,
             "tournament_name": tourney_obj.name if tourney_obj else "All Tournaments Aggregated",
@@ -158,6 +166,241 @@ class ReportService:
             "end_progression": end_progression,
             "lane_accuracy": lane_accuracy,
             "ai_metrics": ai_metrics,
+            "stage_progression": stage_progression,
+        }
+
+    @staticmethod
+    def get_stage_progression_analytics(db: Session, tournament_id: int) -> Dict[str, Any]:
+        """
+        Compute tournament-level stage progression, elimination breakdown, and funnel metrics.
+        Tracks how archers advance or get eliminated round-by-round from qualification to medal finals.
+        """
+        tourney = db.query(Tournament).filter(Tournament.id == tournament_id).first()
+        if not tourney:
+            return {"tournament_id": tournament_id, "tournament_name": "Unknown", "funnel": [], "archers": []}
+
+        sessions = (
+            db.query(SessionModel)
+            .filter(SessionModel.tournament_id == tournament_id)
+            .order_by(SessionModel.round_number.asc(), SessionModel.id.asc())
+            .all()
+        )
+        if not sessions:
+            return {"tournament_id": tourney.id, "tournament_name": tourney.name, "funnel": [], "archers": []}
+
+        stage_rosters: List[Dict[str, Any]] = []
+        for sess in sessions:
+            sa_list = db.query(SessionArcher).filter(SessionArcher.session_id == sess.id).all()
+            scored_archers = []
+            for sa in sa_list:
+                scores = db.query(Score).filter(Score.session_archer_id == sa.id).all()
+                total_pts = sa.total_score or sum(s.points for s in scores)
+                tens = sum(1 for s in scores if s.points == 10)
+                xs = sum(1 for s in scores if s.zone == 10)
+                arrows_count = len(scores)
+                avg_pt = round(total_pts / arrows_count, 2) if arrows_count > 0 else 0.0
+                scored_archers.append({
+                    "session_archer_id": sa.id,
+                    "archer_id": sa.archer_id,
+                    "archer_name": sa.archer_name,
+                    "lane_number": sa.lane_number,
+                    "total_score": total_pts,
+                    "arrows_count": arrows_count,
+                    "tens_count": tens,
+                    "xs_count": xs,
+                    "average_score": avg_pt,
+                })
+            scored_archers.sort(key=lambda x: (-x["total_score"], -x["tens_count"], -x["xs_count"], x["archer_name"]))
+            for rank_idx, item in enumerate(scored_archers, 1):
+                item["rank_in_stage"] = rank_idx
+
+            stage_rosters.append({
+                "session": sess,
+                "archers": scored_archers,
+                "archer_ids": set(a["archer_id"] for a in scored_archers),
+                "archer_names": set(a["archer_name"] for a in scored_archers),
+            })
+
+        funnel: List[Dict[str, Any]] = []
+        for idx, stage in enumerate(stage_rosters):
+            sess = stage["session"]
+            archers_in_stage = stage["archers"]
+            total_in_stage = len(archers_in_stage)
+
+            if idx + 1 < len(stage_rosters):
+                next_stage_ids = stage_rosters[idx + 1]["archer_ids"]
+                next_stage_names = stage_rosters[idx + 1]["archer_names"]
+                advanced = [a for a in archers_in_stage if a["archer_id"] in next_stage_ids or a["archer_name"] in next_stage_names]
+                advanced_cnt = len(advanced)
+                eliminated_cnt = total_in_stage - advanced_cnt
+                cut_off_score = min(a["total_score"] for a in advanced) if advanced else None
+            else:
+                advanced_cnt = min(total_in_stage, 3)
+                eliminated_cnt = 0
+                cut_off_score = archers_in_stage[0]["total_score"] if archers_in_stage else None
+
+            funnel.append({
+                "session_id": sess.id,
+                "session_name": sess.name,
+                "round_number": sess.round_number,
+                "status": sess.status,
+                "total_archers": total_in_stage,
+                "advanced_count": advanced_cnt,
+                "eliminated_count": eliminated_cnt,
+                "cut_off_score": cut_off_score,
+            })
+
+        all_unique_archers: Dict[Any, Dict[str, Any]] = {}
+        for stage_idx, stage in enumerate(stage_rosters):
+            sess = stage["session"]
+            for a in stage["archers"]:
+                key = a["archer_id"] or a["archer_name"]
+                is_last_stage = (stage_idx == len(stage_rosters) - 1)
+                
+                if not is_last_stage:
+                    next_stage = stage_rosters[stage_idx + 1]
+                    advanced = (a["archer_id"] in next_stage["archer_ids"] or a["archer_name"] in next_stage["archer_names"])
+                else:
+                    advanced = True
+
+                stage_score_item = {
+                    "session_id": sess.id,
+                    "session_name": sess.name,
+                    "round_number": sess.round_number,
+                    "score": a["total_score"],
+                    "arrows": a["arrows_count"],
+                    "average": a["average_score"],
+                    "rank_in_stage": a["rank_in_stage"],
+                    "advanced": advanced,
+                }
+
+                if key not in all_unique_archers:
+                    all_unique_archers[key] = {
+                        "archer_id": a["archer_id"],
+                        "archer_name": a["archer_name"],
+                        "qualification_rank": a["rank_in_stage"],
+                        "qualification_score": a["total_score"],
+                        "stages_reached": [sess.name],
+                        "highest_stage": sess.name,
+                        "highest_stage_idx": stage_idx,
+                        "final_stage_rank": a["rank_in_stage"],
+                        "stage_scores": [stage_score_item],
+                    }
+                else:
+                    all_unique_archers[key]["stages_reached"].append(sess.name)
+                    all_unique_archers[key]["highest_stage"] = sess.name
+                    all_unique_archers[key]["highest_stage_idx"] = stage_idx
+                    all_unique_archers[key]["final_stage_rank"] = a["rank_in_stage"]
+                    all_unique_archers[key]["stage_scores"].append(stage_score_item)
+
+        archers_progression: List[Dict[str, Any]] = []
+        total_stages = len(stage_rosters)
+
+        for item in all_unique_archers.values():
+            high_idx = item["highest_stage_idx"]
+            final_rank = item["final_stage_rank"]
+            high_stage_name = item["highest_stage"]
+
+            if high_idx == total_stages - 1:
+                if final_rank == 1:
+                    status = "champion"
+                    label = "🥇 Gold Medalist (Champion)"
+                elif final_rank == 2:
+                    status = "podium"
+                    label = "🥈 Silver Medalist"
+                elif final_rank == 3:
+                    status = "podium"
+                    label = "🥉 Bronze Medalist"
+                else:
+                    status = "finalist"
+                    label = f"{final_rank}th Place Finalist"
+            else:
+                status = "eliminated"
+                label = f"Eliminated in {high_stage_name} (Rank #{final_rank})"
+
+            archers_progression.append({
+                "archer_id": item["archer_id"],
+                "archer_name": item["archer_name"],
+                "qualification_rank": item["qualification_rank"],
+                "qualification_score": item["qualification_score"],
+                "stages_reached": item["stages_reached"],
+                "highest_stage": item["highest_stage"],
+                "elimination_status": status,
+                "elimination_label": label,
+                "stage_scores": item["stage_scores"],
+            })
+
+        archers_progression.sort(key=lambda x: (
+            0 if x["elimination_status"] == "champion" else
+            1 if "Silver" in x["elimination_label"] else
+            2 if "Bronze" in x["elimination_label"] else
+            3 if x["elimination_status"] == "finalist" else
+            4,
+            x["qualification_rank"]
+        ))
+
+        return {
+            "tournament_id": tourney.id,
+            "tournament_name": tourney.name,
+            "funnel": funnel,
+            "archers": archers_progression,
+        }
+
+    @staticmethod
+    def advance_archers_to_stage(
+        db: Session,
+        tournament_id: int,
+        source_session_id: int,
+        target_session_id: int,
+        top_n: int = 4,
+        clear_target: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Advance top N archers from source session into target session.
+        """
+        source_sess = db.query(SessionModel).filter(
+            SessionModel.id == source_session_id,
+            SessionModel.tournament_id == tournament_id
+        ).first()
+        target_sess = db.query(SessionModel).filter(
+            SessionModel.id == target_session_id,
+            SessionModel.tournament_id == tournament_id
+        ).first()
+        if not source_sess or not target_sess:
+            raise ValueError("Invalid source or target session ID")
+
+        if clear_target:
+            db.query(SessionArcher).filter(SessionArcher.session_id == target_session_id).delete()
+            db.commit()
+
+        from src.services.leaderboard_service import LeaderboardService
+        lb = LeaderboardService.get_leaderboard(db, source_session_id, limit=top_n)
+
+        advanced = []
+        for idx, entry in enumerate(lb, 1):
+            existing = db.query(SessionArcher).filter(
+                SessionArcher.session_id == target_session_id,
+                SessionArcher.archer_id == entry["archer_id"]
+            ).first()
+
+            if not existing:
+                sa = SessionArcher(
+                    session_id=target_session_id,
+                    archer_id=entry["archer_id"],
+                    archer_name=entry["archer_name"],
+                    lane_number=idx,
+                    current_round=1,
+                    total_score=0,
+                )
+                db.add(sa)
+                advanced.append(sa)
+
+        db.commit()
+        return {
+            "source_session": source_sess.name,
+            "target_session": target_sess.name,
+            "advanced_count": len(advanced),
+            "advanced_archers": [a.archer_name for a in advanced],
         }
 
     @staticmethod

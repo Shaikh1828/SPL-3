@@ -294,17 +294,14 @@ async def upload_score_image(
                 detail="Failed to record score in the database",
             )
 
-        # For response to UI, set zone/points/confidence to the aggregated values
-        last_score.zone = total_zone
-        last_score.points = total_points
-        last_score.confidence = avg_confidence
+        # Set detection method for response
         last_score.method = detection.get("method", "unknown")
 
         logger.info(
             "score_recorded_via_upload",
             session_id=session_id,
             archer_id=session_archer.archer_id,
-            points=total_points,
+            points=last_score.points,
             confidence=avg_confidence,
             image_id=image_id,
         )
@@ -984,16 +981,16 @@ async def get_score_image_annotated(
 async def override_score_record(
     score_id: int,
     override_data: ScoreOverrideRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_scorer_or_admin),
     db: SQLSession = Depends(get_db),
 ):
     """
-    Override a score record. Can only be performed by an admin.
+    Override a score record. Can be performed by an admin or scorer.
     """
-    if current_user.role != "admin":
+    if current_user.role not in ["admin", "scorer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only administrators can override scores",
+            detail="Only administrators and scorers can override scores",
         )
         
     # Validate score

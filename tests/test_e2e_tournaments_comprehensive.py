@@ -732,13 +732,13 @@ class TestSystemValidationsAndEdgeCasesE2E:
         test_db.commit()
         test_db.refresh(sc)
 
-        # Scorer tries override -> 403 Forbidden
+        # Scorer can override -> 200 OK
         res_ov_scorer = test_client.put(
             f"/api/scores/{sc.id}/override",
-            json={"zone": 10, "points": 10},
+            json={"zone": 10, "points": 10, "reason": "Scorer line judgment"},
             headers=auth_headers,
         )
-        assert res_ov_scorer.status_code == 403
+        assert res_ov_scorer.status_code == 200
 
         # Scorer tries to delete tournament -> 403 Forbidden
         res_del_scorer = test_client.delete(f"/api/tournaments/{t.id}", headers=auth_headers)

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Target, RotateCcw, ArrowRight, ArrowLeft, Check, Sparkles } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Target, RotateCcw, ArrowRight, ArrowLeft, Check, Sparkles, Edit3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Score, SessionArcher } from '@/types'
 
@@ -10,6 +10,7 @@ interface RapidScorePadProps {
   endScores: Score[]
   isSubmitting: boolean
   onRecordScore: (points: number, zone: number, isX?: boolean) => Promise<void>
+  onUpdateSlotScore?: (scoreId: number, points: number, zone: number, isX?: boolean) => Promise<void>
   onUndoLastScore: () => Promise<void>
   onNextEnd: () => void
   onPrevEnd: () => void
@@ -38,24 +39,49 @@ export function RapidScorePad({
   endScores,
   isSubmitting,
   onRecordScore,
+  onUpdateSlotScore,
   onUndoLastScore,
   onNextEnd,
   onPrevEnd,
   canScore,
 }: RapidScorePadProps) {
   const [lastClicked, setLastClicked] = useState<string | null>(null)
+  const [selectedSlotIndex, setSelectedSlotIndex] = useState<number>(0)
 
   const arrowsShot = endScores.length
   const isEndComplete = arrowsShot >= arrowsPerRound
   const endSubtotal = endScores.reduce((sum, s) => sum + s.points, 0)
   const tensCount = endScores.filter(s => s.points === 10).length
 
+  // Sync selected slot to next available unfilled slot or last slot
+  useEffect(() => {
+    if (arrowsShot < arrowsPerRound) {
+      setSelectedSlotIndex(arrowsShot)
+    } else {
+      setSelectedSlotIndex(arrowsPerRound - 1)
+    }
+  }, [arrowsShot, arrowsPerRound, currentEnd])
+
   const handleScoreClick = async (item: typeof SCORE_BUTTONS[0]) => {
-    if (!canScore || isSubmitting || !archer || isEndComplete) return
+    if (!canScore || isSubmitting || !archer) return
     setLastClicked(item.label)
-    await onRecordScore(item.points, item.zone, item.isX)
+
+    const existingScore = endScores[selectedSlotIndex]
+    if (existingScore && onUpdateSlotScore) {
+      // Overriding existing slot
+      await onUpdateSlotScore(existingScore.id, item.points, item.zone, item.isX)
+    } else {
+      // Appending new arrow score
+      await onRecordScore(item.points, item.zone, item.isX)
+    }
+
+    // Auto-advance selection to next slot
+    setSelectedSlotIndex((prev) => Math.min(prev + 1, arrowsPerRound - 1))
     setLastClicked(null)
   }
+
+  const selectedScore = endScores[selectedSlotIndex]
+  const isEditingExisting = !!selectedScore
 
   return (
     <div className="glass-card p-5 space-y-5 border-navy-700/80 shadow-2xl">
@@ -75,8 +101,13 @@ export function RapidScorePad({
               </span>
             )}
           </div>
-          <p className="text-xs text-slate-400 mt-1">
-            Arrow {Math.min(arrowsShot + 1, arrowsPerRound)} of {arrowsPerRound} in End {currentEnd}
+          <p className="text-xs text-slate-400 mt-1 flex items-center gap-2">
+            <span>Arrow Slot #{selectedSlotIndex + 1} Selected</span>
+            {isEditingExisting && (
+              <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded font-semibold border border-amber-500/30 flex items-center gap-1">
+                <Edit3 className="w-3 h-3" /> Edit mode
+              </span>
+            )}
           </p>
         </div>
 
@@ -94,11 +125,11 @@ export function RapidScorePad({
         </div>
       </div>
 
-      {/* Arrow Slots Visualizer */}
+      {/* Arrow Slots Visualizer (Clickable Slots for Direct Editing) */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-            Current End Arrows
+            Current End Arrows (Click any slot to edit)
           </span>
           {tensCount > 0 && (
             <span className="text-xs text-gold-400 font-bold flex items-center gap-1">
@@ -110,14 +141,18 @@ export function RapidScorePad({
         <div className="grid grid-cols-6 gap-2">
           {Array.from({ length: arrowsPerRound }).map((_, idx) => {
             const scoreItem = endScores[idx]
-            const isCurrent = idx === arrowsShot
+            const isSelected = idx === selectedSlotIndex
             const isFilled = !!scoreItem
 
             return (
-              <div
+              <button
                 key={idx}
+                type="button"
+                data-testid={`arrow-slot-${idx + 1}`}
+                onClick={() => setSelectedSlotIndex(idx)}
                 className={cn(
-                  'h-14 rounded-xl border flex flex-col items-center justify-center transition-all relative overflow-hidden',
+                  'h-14 rounded-xl border flex flex-col items-center justify-center transition-all relative overflow-hidden text-left focus:outline-none cursor-pointer',
+                  isSelected && 'ring-2 ring-gold-400 ring-offset-2 ring-offset-navy-950 scale-102 z-10 shadow-lg',
                   isFilled
                     ? scoreItem.points === 10
                       ? 'bg-gradient-to-b from-amber-500/25 to-amber-500/10 border-amber-400 text-amber-300 shadow-md shadow-amber-500/10'
@@ -126,12 +161,12 @@ export function RapidScorePad({
                       : scoreItem.points >= 6
                       ? 'bg-gradient-to-b from-sky-600/25 to-sky-600/10 border-sky-500 text-sky-300'
                       : 'bg-navy-800/80 border-navy-700 text-slate-200'
-                    : isCurrent
-                    ? 'border-gold-500/70 bg-gold-500/10 animate-pulse text-gold-400 shadow-lg shadow-gold-500/10'
-                    : 'border-dashed border-navy-700/80 bg-navy-950/40 text-slate-600'
+                    : isSelected
+                    ? 'border-gold-500/80 bg-gold-500/10 animate-pulse text-gold-400 shadow-lg shadow-gold-500/10'
+                    : 'border-dashed border-navy-700/80 bg-navy-950/40 text-slate-600 hover:border-slate-500'
                 )}
               >
-                <span className="text-[10px] font-mono text-slate-400 absolute top-1 left-1.5">
+                <span className="text-[10px] font-mono text-slate-400 absolute top-1 left-1.5 flex items-center gap-1">
                   #{idx + 1}
                 </span>
 
@@ -139,12 +174,12 @@ export function RapidScorePad({
                   <span className="text-xl font-black font-mono mt-2">
                     {scoreItem.points === 10 && scoreItem.zone === 10 ? 'X' : scoreItem.points === 0 ? 'M' : scoreItem.points}
                   </span>
-                ) : isCurrent ? (
+                ) : isSelected ? (
                   <Target className="w-5 h-5 text-gold-400 animate-spin-slow mt-2" />
                 ) : (
                   <span className="text-sm font-mono text-slate-600 mt-2">—</span>
                 )}
-              </div>
+              </button>
             )
           })}
         </div>
@@ -152,20 +187,28 @@ export function RapidScorePad({
 
       {/* Tactile Score Buttons Grid */}
       <div className="space-y-2">
-        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-          Tap Score to Record Arrow
-        </span>
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            {isEditingExisting ? `Tap Score to Override Arrow #${selectedSlotIndex + 1}` : `Tap Score to Record Arrow #${selectedSlotIndex + 1}`}
+          </span>
+          {isEditingExisting && (
+            <span className="text-xs text-gold-400 font-semibold">
+              Current: {selectedScore.points === 10 && selectedScore.zone === 10 ? 'X' : selectedScore.points} pts
+            </span>
+          )}
+        </div>
 
         <div className="grid grid-cols-4 sm:grid-cols-6 gap-2.5">
           {SCORE_BUTTONS.map((btn) => (
             <button
               key={btn.label}
+              data-testid={`score-pad-btn-${btn.label}`}
               onClick={() => handleScoreClick(btn)}
-              disabled={!canScore || isSubmitting || !archer || isEndComplete}
+              disabled={!canScore || isSubmitting || !archer}
               className={cn(
                 'h-14 rounded-xl border flex flex-col items-center justify-center transition-all transform active:scale-95 shadow-md',
                 btn.bg,
-                (!canScore || isSubmitting || !archer || isEndComplete) && 'opacity-40 cursor-not-allowed transform-none shadow-none',
+                (!canScore || isSubmitting || !archer) && 'opacity-40 cursor-not-allowed transform-none shadow-none',
                 lastClicked === btn.label && 'ring-2 ring-gold-400 scale-95'
               )}
             >

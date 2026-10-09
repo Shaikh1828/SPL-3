@@ -450,15 +450,28 @@ class TestScoreAPI:
         assert response.status_code == 400  # "Score does not have an associated image"
 
     def test_override_score_forbidden(
-        self, test_client: TestClient, test_score, auth_headers
+        self, test_client: TestClient, test_score, spectator_auth_headers
     ):
-        """Test that scorer cannot override score."""
+        """Test that spectator cannot override score."""
         response = test_client.put(
             f"/api/scores/{test_score.id}/override",
             json={"zone": 10, "points": 10, "reason": "Manually corrected"},
-            headers=auth_headers,
+            headers=spectator_auth_headers,
         )
         assert response.status_code == 403
+
+    def test_override_score_scorer_success(
+        self, test_client: TestClient, test_db, test_score, auth_headers
+    ):
+        """Test that scorer can override score."""
+        response = test_client.put(
+            f"/api/scores/{test_score.id}/override",
+            json={"zone": 9, "points": 9, "reason": "Scorer correction"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["points"] == 9
 
     def test_override_score_admin_success(
         self, test_client: TestClient, test_db, test_score, admin_auth_headers

@@ -298,3 +298,59 @@ async def delete_tournament(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete tournament",
         )
+
+
+@router.get("/{tournament_id}/stage-progression")
+async def get_tournament_stage_progression(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Get stage-by-stage progression, qualification cut-offs, and elimination status.
+    """
+    try:
+        from src.services.report_service import ReportService
+        return ReportService.get_stage_progression_analytics(db, tournament_id)
+    except Exception as e:
+        logger.exception("stage_progression_error", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to calculate stage progression",
+        )
+
+
+@router.post("/{tournament_id}/advance-stage")
+async def advance_tournament_stage(
+    tournament_id: int,
+    request: Dict[str, Any],
+    current_user: User = Depends(require_roles(["admin", "scorer"])),
+    db: Session = Depends(get_db),
+):
+    """
+    Advance top qualifying archers from one session into the next elimination round.
+    """
+    try:
+        from src.services.report_service import ReportService
+        source_session_id = int(request.get("source_session_id", 0))
+        target_session_id = int(request.get("target_session_id", 0))
+        top_n = int(request.get("top_qualifiers_count", 4))
+        clear_target = bool(request.get("clear_target", False))
+
+        result = ReportService.advance_archers_to_stage(
+            db=db,
+            tournament_id=tournament_id,
+            source_session_id=source_session_id,
+            target_session_id=target_session_id,
+            top_n=top_n,
+            clear_target=clear_target,
+        )
+        return result
+    except ValueError as ve:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+    except Exception as e:
+        db.rollback()
+        logger.exception("advance_stage_error", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to advance archers to next stage",
+        )

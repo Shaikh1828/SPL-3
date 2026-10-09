@@ -185,15 +185,7 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-6 p-4 glass-card">
-            <p className="text-xs text-slate-500 font-medium mb-2">Demo credentials:</p>
-            <div className="space-y-1">
-              <p className="text-xs text-slate-400"><span className="text-gold-400">admin</span> / admin123!</p>
-              <p className="text-xs text-slate-400"><span className="text-gold-400">scorer</span> / scorer123!</p>
-            </div>
-          </div>
-
-          <div className="mt-4 text-center">
+          <div className="mt-6 text-center">
             <p className="text-sm text-slate-500">
               Don't have an account?{' '}
               <Link

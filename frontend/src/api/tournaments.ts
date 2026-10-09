@@ -19,4 +19,10 @@ export const tournamentsApi = {
 
   getLeaderboard: (id: number) =>
     apiClient.get<LeaderboardEntry[]>(`/tournaments/${id}/leaderboard`).then((r) => r.data),
+
+  getStageProgression: (id: number) =>
+    apiClient.get(`/tournaments/${id}/stage-progression`).then((r) => r.data),
+
+  advanceStage: (id: number, data: { source_session_id: number; target_session_id: number; top_qualifiers_count?: number; clear_target?: boolean }) =>
+    apiClient.post(`/tournaments/${id}/advance-stage`, data).then((r) => r.data),
 }

@@ -838,6 +838,167 @@ export default function ReportsPage() {
                 </div>
               </div>
             </div>
+
+            {/* Tournament Stage Progression & Elimination Funnel */}
+            {analytics?.stage_progression && analytics.stage_progression.funnel && analytics.stage_progression.funnel.length > 0 && (
+              <div className="glass-card p-6 border border-navy-700/60 rounded-xl bg-navy-900/70 space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                      <Layers className="w-5 h-5 text-gold-400" />
+                      <span>Tournament Stage Progression & Elimination Funnel</span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Round-by-round qualification cuts, elimination brackets, and advancing contenders
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs px-2.5 py-1 bg-gold-500/10 text-gold-400 rounded-full border border-gold-500/20 font-semibold flex items-center gap-1">
+                      <Trophy className="w-3.5 h-3.5" />
+                      {analytics.stage_progression.funnel.length} Stages Monitored
+                    </span>
+                  </div>
+                </div>
+
+                {/* Stage Funnel Stepper Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {analytics.stage_progression.funnel.map((step, idx) => (
+                    <div
+                      key={step.session_id}
+                      className={cn(
+                        'p-4 rounded-xl border relative overflow-hidden transition-all',
+                        step.status === 'completed'
+                          ? 'bg-navy-950/80 border-navy-700/70'
+                          : step.status === 'active'
+                          ? 'bg-gradient-to-b from-gold-500/10 via-navy-900/90 to-navy-950 border-gold-500/40 shadow-lg shadow-gold-500/5'
+                          : 'bg-navy-950/40 border-navy-800'
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold font-mono px-2 py-0.5 rounded bg-navy-800 text-gold-400 border border-navy-700">
+                          Stage {idx + 1}
+                        </span>
+                        <span className={cn(
+                          'text-[10px] font-semibold px-2 py-0.5 rounded-full border uppercase',
+                          step.status === 'completed'
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                            : step.status === 'active'
+                            ? 'bg-gold-500/20 text-gold-300 border-gold-500/30 animate-pulse'
+                            : 'bg-navy-800 text-slate-400 border-navy-700'
+                        )}>
+                          {step.status}
+                        </span>
+                      </div>
+
+                      <h4 className="text-sm font-bold text-slate-200 mt-2 line-clamp-1">
+                        {step.session_name}
+                      </h4>
+
+                      <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-navy-800 text-center">
+                        <div className="bg-navy-900/60 p-2 rounded-lg border border-navy-800">
+                          <span className="text-[10px] text-slate-400 block uppercase">Archers</span>
+                          <span className="text-base font-black text-slate-100">{step.total_archers}</span>
+                        </div>
+                        <div className="bg-emerald-500/5 p-2 rounded-lg border border-emerald-500/20">
+                          <span className="text-[10px] text-emerald-400 block uppercase">Advanced</span>
+                          <span className="text-base font-black text-emerald-400">+{step.advanced_count}</span>
+                        </div>
+                        <div className="bg-red-500/5 p-2 rounded-lg border border-red-500/20">
+                          <span className="text-[10px] text-red-400 block uppercase">Cut</span>
+                          <span className="text-base font-black text-red-400">{step.eliminated_count}</span>
+                        </div>
+                      </div>
+
+                      {step.cut_off_score && (
+                        <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between">
+                          <span>Qualification Cut-off:</span>
+                          <span className="font-mono font-bold text-gold-400">{step.cut_off_score} pts</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Archer Elimination & Progression Matrix */}
+                {analytics.stage_progression.archers && analytics.stage_progression.archers.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <Award className="w-4 h-4 text-gold-400" />
+                        Elimination Breakdown & Final Standings
+                      </h4>
+                      <span className="text-[11px] text-slate-400">
+                        {analytics.stage_progression.archers.length} Athletes in Tournament Pipeline
+                      </span>
+                    </div>
+
+                    <div className="overflow-x-auto border border-navy-800 rounded-xl">
+                      <table className="w-full text-left text-xs text-slate-300">
+                        <thead className="bg-navy-950/90 text-slate-400 uppercase text-[10px] font-semibold border-b border-navy-800">
+                          <tr>
+                            <th className="px-4 py-3">Seed</th>
+                            <th className="px-4 py-3">Athlete</th>
+                            <th className="px-4 py-3">Qualifying Score</th>
+                            <th className="px-4 py-3">Stages Contested</th>
+                            <th className="px-4 py-3">Highest Stage</th>
+                            <th className="px-4 py-3">Tournament Status / Medal</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-navy-800/60 bg-navy-900/40">
+                          {analytics.stage_progression.archers.map((arc) => (
+                            <tr key={arc.archer_id} className="hover:bg-navy-800/40 transition-colors">
+                              <td className="px-4 py-3 font-mono font-bold text-slate-400">
+                                #{arc.qualification_rank}
+                              </td>
+                              <td className="px-4 py-3 font-bold text-slate-100 flex items-center gap-2">
+                                <span>{arc.archer_name}</span>
+                              </td>
+                              <td className="px-4 py-3 font-mono">
+                                <span className="font-bold text-gold-400">{arc.qualification_score}</span>
+                                <span className="text-[10px] text-slate-500 ml-1">pts</span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  {arc.stages_reached.map((st, i) => (
+                                    <span
+                                      key={i}
+                                      className="px-2 py-0.5 rounded text-[10px] font-semibold bg-navy-800 text-slate-300 border border-navy-700"
+                                    >
+                                      {st.length > 20 ? st.slice(0, 18) + '...' : st}
+                                    </span>
+                                  ))}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-slate-300 font-medium truncate max-w-[160px]">
+                                {arc.highest_stage}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span
+                                  className={cn(
+                                    'px-2.5 py-1 rounded-full text-[11px] font-bold border inline-flex items-center gap-1 shadow-sm',
+                                    arc.elimination_status === 'champion'
+                                      ? 'bg-gold-500/20 text-gold-300 border-gold-500/40 shadow-gold-500/10'
+                                      : arc.elimination_status === 'podium'
+                                      ? 'bg-slate-300/20 text-slate-200 border-slate-400/40'
+                                      : arc.elimination_status === 'finalist'
+                                      ? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
+                                      : arc.elimination_status === 'active'
+                                      ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                      : 'bg-navy-800/80 text-slate-400 border-navy-700'
+                                  )}
+                                >
+                                  {arc.elimination_label}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

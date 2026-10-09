@@ -31,9 +31,9 @@ class TestTrainingAPI:
         data = res.json()
         assert "items" in data
 
-    def test_reload_weights(self, test_client: TestClient):
+    def test_reload_weights(self, test_client: TestClient, auth_headers: dict):
         """POST /api/training/reload reloads best weights into detector."""
-        res = test_client.post("/api/training/reload")
+        res = test_client.post("/api/training/reload", headers=auth_headers)
         assert res.status_code == 200
         data = res.json()
         assert data.get("status") == "ok"

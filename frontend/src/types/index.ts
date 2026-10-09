@@ -425,6 +425,47 @@ export interface AIMetrics {
   overridden_count: number
 }
 
+export interface StageFunnelItem {
+  session_id: number
+  session_name: string
+  round_number: number
+  status: string
+  total_archers: number
+  advanced_count: number
+  eliminated_count: number
+  cut_off_score?: number | null
+}
+
+export interface ArcherStageScore {
+  session_id: number
+  session_name: string
+  round_number: number
+  score: number
+  arrows: number
+  average: number
+  rank_in_stage: number
+  advanced: boolean
+}
+
+export interface ArcherStageProgressionItem {
+  archer_id: number
+  archer_name: string
+  qualification_rank: number
+  qualification_score: number
+  stages_reached: string[]
+  highest_stage: string
+  elimination_status: 'champion' | 'podium' | 'finalist' | 'eliminated' | 'active' | string
+  elimination_label: string
+  stage_scores: ArcherStageScore[]
+}
+
+export interface StageProgressionResponse {
+  tournament_id: number
+  tournament_name: string
+  funnel: StageFunnelItem[]
+  archers: ArcherStageProgressionItem[]
+}
+
 export interface TournamentAnalyticsResponse {
   tournament_id?: number | null
   tournament_name?: string | null
@@ -438,6 +479,7 @@ export interface TournamentAnalyticsResponse {
   end_progression: EndProgressionItem[]
   lane_accuracy: LaneAccuracyItem[]
   ai_metrics: AIMetrics
+  stage_progression?: StageProgressionResponse | null
 }
 
 export interface ArcherTournamentHistory {

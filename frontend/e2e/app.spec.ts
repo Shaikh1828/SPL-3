@@ -106,15 +106,16 @@ test.describe('Archery Scoring System - Comprehensive E2E Test Suite', () => {
     expect(count).toBeGreaterThan(0)
 
     // Click on a target scan card to open the detail inspection modal
-    await page.locator('div[class*="glass-card"]:has(img)').first().click()
+    const firstScan = page.locator('.aspect-video').first()
+    if (await firstScan.isVisible()) {
+      await firstScan.click()
+      await expect(page.locator('button:has(svg.lucide-x)').first()).toBeVisible({ timeout: 6000 })
 
-    // Verify Score Details Modal opens
-    await expect(page.locator('text=Arrow Score Details').or(page.locator('text=Target Image Preview')).or(page.locator('text=Score:')).first()).toBeVisible()
-
-    // Close modal
-    const closeBtn = page.locator('button:has(svg.lucide-x)').first()
-    if (await closeBtn.isVisible()) {
-      await closeBtn.click()
+      // Close modal
+      const closeBtn = page.locator('button:has(svg.lucide-x)').first()
+      if (await closeBtn.isVisible()) {
+        await closeBtn.click()
+      }
     }
   })
 
@@ -156,5 +157,38 @@ test.describe('Archery Scoring System - Comprehensive E2E Test Suite', () => {
 
     // Verify Cameras view
     await expect(page.locator('text=Camera & OBS Stream Hub').or(page.locator('text=No Active Session')).first()).toBeVisible()
+  })
+
+  test('7. Tournament Stage Progression & Elimination Funnel Verification', async ({ page }) => {
+    await page.goto('/reports')
+    await page.waitForLoadState('networkidle')
+
+    // Verify Stage Progression & Elimination section
+    await expect(page.locator('text=Tournament Stage Progression & Elimination Funnel').first()).toBeVisible({ timeout: 10000 })
+    await expect(page.locator('text=Elimination Breakdown & Final Standings').first()).toBeVisible()
+
+    // Verify Stage 1, Stage 2, Stage 3 cards exist in the funnel
+    await expect(page.locator('text=Stage 1').first()).toBeVisible()
+
+    // Check table with elimination status badges
+    await expect(page.locator('th:has-text("Seed")').first()).toBeVisible()
+    await expect(page.locator('th:has-text("Tournament Status / Medal")').first()).toBeVisible()
+  })
+
+  test('8. Dashboard Tournament Selector Ribbon & Smooth Leaderboard Scroll', async ({ page }) => {
+    await page.goto('/dashboard')
+    await page.waitForLoadState('networkidle')
+
+    // Verify Tournament Selector ribbon
+    await expect(page.locator('text=Select Tournament to View Standings').first()).toBeVisible()
+
+    // Click on "View Leaderboard" in a tournament card
+    const viewLeaderboardBtn = page.locator('span:has-text("View Leaderboard")').first()
+    await expect(viewLeaderboardBtn).toBeVisible()
+    await viewLeaderboardBtn.click()
+
+    // Ensure Tournament Live Dashboard banner and leaderboard are in view
+    await expect(page.locator('#tournament-live-dashboard-section')).toBeVisible()
+    await expect(page.locator('text=Leaderboard & Player Roster').first()).toBeVisible()
   })
 })

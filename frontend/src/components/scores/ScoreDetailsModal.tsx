@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { X, Image as ImageIcon, ShieldAlert, CheckCircle } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { X, Image as ImageIcon, ShieldAlert, CheckCircle, Target } from 'lucide-react'
 import { scoresApi } from '@/api/scores'
 import { useAuthStore } from '@/store/authStore'
 import { cn, getConfidenceColor } from '@/lib/utils'
@@ -11,6 +11,7 @@ interface ScoreDetailsModalProps {
   isOpen: boolean
   onClose: () => void
   score: Score | null
+  allScores?: Score[]
   dryRunData?: {
     filename: string
     zone: number
@@ -26,56 +27,76 @@ export function ScoreDetailsModal({
   isOpen,
   onClose,
   score,
+  allScores = [],
   dryRunData,
   onOverrideSuccess,
 }: ScoreDetailsModalProps) {
   const { user } = useAuthStore()
   const canOverride = user?.role === 'admin' || user?.role === 'scorer'
   const [activeTab, setActiveTab] = useState<'annotated' | 'raw'>('annotated')
-  const [overrideZone, setOverrideZone] = useState<number>(score?.zone ?? 0)
-  const [overridePoints, setOverridePoints] = useState<number>(score?.points ?? 0)
+  const [selectedScoreId, setSelectedScoreId] = useState<number | null>(null)
+  const [overrideZone, setOverrideZone] = useState<number>(0)
+  const [overridePoints, setOverridePoints] = useState<number>(0)
   const [overrideReason, setOverrideReason] = useState<string>('')
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false)
 
-  // Initialize values when modal opens/score changes
-  useState(() => {
+  // Find sibling scores in the same round for this archer
+  const roundScores = (score && allScores.length > 0)
+    ? allScores.filter(s => s.session_archer_id === score.session_archer_id && s.round === score.round)
+    : (score ? [score] : [])
+
+  const currentScore = roundScores.find(s => s.id === selectedScoreId) || score
+
+  // Sync selection and form fields when score or modal opens
+  useEffect(() => {
     if (score) {
-      setOverrideZone(score.zone)
-      setOverridePoints(score.points)
+      setSelectedScoreId(score.id)
+    } else {
+      setSelectedScoreId(null)
+    }
+  }, [score])
+
+  useEffect(() => {
+    if (currentScore) {
+      setOverrideZone(currentScore.zone)
+      setOverridePoints(currentScore.points)
       setOverrideReason('')
     } else if (dryRunData) {
       setOverrideZone(dryRunData.zone)
       setOverridePoints(dryRunData.points)
       setOverrideReason('')
     }
-  })
+  }, [currentScore?.id, currentScore?.zone, currentScore?.points, dryRunData])
 
   if (!isOpen) return null
 
   const isDryRun = !!dryRunData
-  const filename = isDryRun ? dryRunData.filename : `Score Record #${score?.id}`
-  const zone = isDryRun ? dryRunData.zone : score?.zone
-  const points = isDryRun ? dryRunData.points : score?.points
-  const confidence = isDryRun ? dryRunData.confidence : score?.confidence ?? 0
-  const method = isDryRun ? dryRunData.method : score?.method ?? 'unknown'
-  const isValidated = isDryRun ? false : score?.validated_by_ai
+  const filename = isDryRun ? dryRunData.filename : `Score Record #${currentScore?.id}`
+  const zone = isDryRun ? dryRunData.zone : currentScore?.zone
+  const points = isDryRun ? dryRunData.points : currentScore?.points
+  const confidence = isDryRun ? dryRunData.confidence : currentScore?.confidence ?? 0
+  const method = isDryRun ? dryRunData.method : currentScore?.method ?? 'unknown'
+  const isValidated = isDryRun ? false : currentScore?.validated_by_ai
+
+  const scanTotalPoints = roundScores.length > 0
+    ? roundScores.reduce((sum, s) => sum + s.points, 0)
+    : (points ?? 0)
 
   const handleOverrideSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!score) return
+    if (!currentScore) return
 
     setIsSubmitting(true)
     try {
-      await scoresApi.override(score.id, {
+      await scoresApi.override(currentScore.id, {
         zone: overrideZone,
         points: overridePoints,
-        reason: overrideReason,
+        reason: overrideReason || 'Manual adjustment via score modal',
       })
-      toast.success('Score overridden successfully')
+      toast.success(`Arrow #${currentScore.arrow_num} score updated to ${overridePoints} pts`)
       if (onOverrideSuccess) {
         onOverrideSuccess()
       }
-      onClose()
     } catch (err: any) {
       toast.error(err.response?.data?.detail || 'Failed to override score')
     } finally {
@@ -84,8 +105,9 @@ export function ScoreDetailsModal({
   }
 
   // Determine Image sources
-  const rawImageSrc = score ? scoresApi.getRawImageUrl(score.id) : ''
-  const annotatedImageSrc = score ? scoresApi.getAnnotatedImageUrl(score.id) : ''
+  const activeImageId = currentScore?.id || score?.id
+  const rawImageSrc = activeImageId ? scoresApi.getRawImageUrl(activeImageId) : ''
+  const annotatedImageSrc = activeImageId ? scoresApi.getAnnotatedImageUrl(activeImageId) : ''
   const base64Annotated = dryRunData?.annotated_image
 
   return (
@@ -137,13 +159,62 @@ export function ScoreDetailsModal({
         <div className="w-full md:w-80 p-6 flex flex-col justify-between bg-navy-900/60 overflow-y-auto">
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-bold text-slate-100">Shot Analysis</h3>
+              <div>
+                <h3 className="text-base font-bold text-slate-100">Shot Analysis</h3>
+                {!isDryRun && currentScore && (
+                  <p className="text-[11px] text-gold-400 font-mono mt-0.5">
+                    End {currentScore.round} · Arrow #{currentScore.arrow_num}
+                  </p>
+                )}
+              </div>
               <button onClick={onClose} className="text-slate-400 hover:text-slate-200 p-1 rounded-lg hover:bg-navy-800">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Score Grid */}
+            {/* Scan / End Aggregate Header */}
+            {!isDryRun && roundScores.length > 0 && (
+              <div className="mb-4 p-3 bg-navy-850 border border-navy-750 rounded-xl">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Target className="w-3.5 h-3.5 text-gold-400" />
+                    End {score?.round} Scan Total
+                  </span>
+                  <span className="text-sm font-black font-mono text-gold-400">
+                    {scanTotalPoints} pts <span className="text-[10px] text-slate-400 font-normal">({roundScores.length} arrows)</span>
+                  </span>
+                </div>
+
+                {/* Arrow Pills Selector */}
+                {roundScores.length > 1 && (
+                  <div className="mt-2.5 pt-2 border-t border-navy-800 flex gap-1.5 flex-wrap">
+                    {roundScores.map((arr) => {
+                      const isSelected = arr.id === currentScore?.id
+                      return (
+                        <button
+                          key={arr.id}
+                          onClick={() => setSelectedScoreId(arr.id)}
+                          className={cn(
+                            'px-2 py-1 rounded text-xs font-mono font-bold transition-all border flex items-center gap-1',
+                            isSelected
+                              ? 'bg-gold-500 text-navy-950 border-gold-400 shadow-md ring-1 ring-gold-400'
+                              : 'bg-navy-900/80 text-slate-300 border-navy-700 hover:border-slate-500'
+                          )}
+                          title={`Click to view Arrow #${arr.arrow_num}`}
+                        >
+                          <span>#{arr.arrow_num}:</span>
+                          <span className={isSelected ? 'text-navy-950 font-black' : 'text-gold-400 font-black'}>
+                            {arr.points === 10 && arr.zone === 10 ? 'X' : arr.points}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Selected Arrow Score Grid */}
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
                 <div className="bg-navy-850/50 border border-navy-800/80 p-3 rounded-lg text-center">
@@ -190,24 +261,29 @@ export function ScoreDetailsModal({
 
             {/* Admin / Scorer Override Section */}
             {!isDryRun && (
-              <div className="mt-6 border-t border-navy-800 pt-6">
+              <div className="mt-6 border-t border-navy-800 pt-5">
                 <h4 className="text-sm font-bold text-slate-200 flex items-center gap-2 mb-3">
-                  <ShieldAlert className="w-4 h-4 text-rose-500 animate-pulse" />
-                  Score Override
+                  <ShieldAlert className="w-4 h-4 text-rose-500" />
+                  Override Arrow #{currentScore?.arrow_num ?? 1}
                 </h4>
                 
                 {canOverride ? (
-                  <form onSubmit={handleOverrideSubmit} className="space-y-4">
+                  <form onSubmit={handleOverrideSubmit} className="space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-slate-400 text-xs mb-1">Override Zone</label>
                         <input
                           type="number"
                           min="0"
+                          max="10"
                           required
                           value={overrideZone}
-                          onChange={(e) => setOverrideZone(parseInt(e.target.value) || 0)}
-                          className="input-dark w-full py-1 text-sm text-center"
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 0
+                            setOverrideZone(val)
+                            setOverridePoints(val)
+                          }}
+                          className="input-dark w-full py-1 text-sm text-center font-bold"
                         />
                       </div>
                       <div>
@@ -215,10 +291,11 @@ export function ScoreDetailsModal({
                         <input
                           type="number"
                           min="0"
+                          max="10"
                           required
                           value={overridePoints}
                           onChange={(e) => setOverridePoints(parseInt(e.target.value) || 0)}
-                          className="input-dark w-full py-1 text-sm text-center"
+                          className="input-dark w-full py-1 text-sm text-center font-bold"
                         />
                       </div>
                     </div>
