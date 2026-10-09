@@ -274,44 +274,110 @@ def seed_session_archers(db: Session, sessions: list):
 
 
 def seed_scores(db: Session, session_archers: list):
-    """Seed realistic arrow impacts with zone calculation and total synchronization."""
+    """Seed realistic arrow impacts with zone calculation and total synchronization across 5 ends."""
     logger.info("seeding_scores")
 
     scores = []
-    # Seed scores for active sessions
+    # Seed scores for active sessions across 5 ends (30 arrows per archer)
     for sa in session_archers:
         existing_scores = db.query(Score).filter(Score.session_archer_id == sa.id).all()
-        if existing_scores:
-            # Recalculate and synchronize total_score
+        # If already populated with 5 ends (at least 30 arrows), keep or sync
+        if existing_scores and len(existing_scores) >= 30:
             total_pts = sum(s.points for s in existing_scores)
             sa.total_score = total_pts
+            sa.current_round = max(s.round for s in existing_scores)
             db.commit()
             scores.extend(existing_scores)
             continue
+        elif existing_scores:
+            # Clear incomplete ends to re-seed 5 full ends
+            for es in existing_scores:
+                db.delete(es)
+            db.commit()
 
-        # Generate realistic scores for 2 ends (6 arrows per end = 12 arrows)
+        # Skill profile based on lane number (1 to 6)
+        lane = sa.lane_number or 1
         total_accumulated = 0
-        for round_num in range(1, 3):
-            for arrow_num in range(1, 7):
-                # World-class archery distribution (higher probability of 10s and 9s)
-                roll = random.random()
-                if roll > 0.40:
-                    zone = 10
-                    points = 10
-                    is_x = random.random() > 0.5
-                elif roll > 0.15:
-                    zone = 9
-                    points = 9
-                    is_x = False
-                elif roll > 0.05:
-                    zone = 8
-                    points = 8
-                    is_x = False
-                else:
-                    zone = 7
-                    points = 7
-                    is_x = False
 
+        # Generate realistic scores for 5 ends (6 arrows per end = 30 arrows total)
+        for round_num in range(1, 6):
+            # Fatigue / pacing factor per end (End 1 fresh, End 2 peak, End 3 steady, End 4 fatigue dip, End 5 final push)
+            end_fatigue_bias = {
+                1: 0.0,
+                2: 0.05,   # warming up & peaked
+                3: 0.0,
+                4: -0.06,  # fatigue dip
+                5: 0.02,   # adrenaline finish
+            }.get(round_num, 0.0)
+
+            for arrow_num in range(1, 7):
+                roll = random.random() + end_fatigue_bias
+
+                # Archer specific distribution
+                if lane == 3:  # Kim Woo-jin (world champion level ~9.7 avg)
+                    if roll > 0.35:
+                        points = 10
+                        is_x = random.random() > 0.45
+                    elif roll > 0.08:
+                        points = 9
+                        is_x = False
+                    elif roll > 0.02:
+                        points = 8
+                        is_x = False
+                    else:
+                        points = 7
+                        is_x = False
+                elif lane in (1, 6):  # Brady Ellison / An San (~9.5 avg)
+                    if roll > 0.42:
+                        points = 10
+                        is_x = random.random() > 0.5
+                    elif roll > 0.15:
+                        points = 9
+                        is_x = False
+                    elif roll > 0.05:
+                        points = 8
+                        is_x = False
+                    else:
+                        points = 7
+                        is_x = False
+                elif lane in (2, 4):  # Mete Gazoz / Marcus D'Almeida (~9.2 avg)
+                    if roll > 0.50:
+                        points = 10
+                        is_x = random.random() > 0.6
+                    elif roll > 0.22:
+                        points = 9
+                        is_x = False
+                    elif roll > 0.08:
+                        points = 8
+                        is_x = False
+                    elif roll > 0.03:
+                        points = 7
+                        is_x = False
+                    else:
+                        points = 6
+                        is_x = False
+                else:  # Deepika Kumari & others (~8.9 avg, wider histogram spread)
+                    if roll > 0.55:
+                        points = 10
+                        is_x = random.random() > 0.65
+                    elif roll > 0.28:
+                        points = 9
+                        is_x = False
+                    elif roll > 0.12:
+                        points = 8
+                        is_x = False
+                    elif roll > 0.05:
+                        points = 7
+                        is_x = False
+                    elif roll > 0.02:
+                        points = 6
+                        is_x = False
+                    else:
+                        points = 5
+                        is_x = False
+
+                zone = points
+                img_suffix = "x" if is_x else "normal"
                 score = Score(
                     session_id=sa.session_id,
                     session_archer_id=sa.id,
@@ -319,16 +385,16 @@ def seed_scores(db: Session, session_archers: list):
                     arrow_num=arrow_num,
                     zone=zone,
                     points=points,
-                    confidence=round(random.uniform(0.92, 0.99), 3),
+                    confidence=round(random.uniform(0.93, 0.99), 3),
                     validated_by_ai=True,
-                    image_id=f"target_scan_{sa.session_id}_{round_num}_{arrow_num}.jpg",
+                    image_id=f"target_scan_{sa.session_id}_{round_num}_{arrow_num}_{img_suffix}.jpg",
                 )
                 db.add(score)
                 scores.append(score)
                 total_accumulated += points
 
         sa.total_score = total_accumulated
-        sa.current_round = 2
+        sa.current_round = 5
         db.commit()
 
     db.commit()

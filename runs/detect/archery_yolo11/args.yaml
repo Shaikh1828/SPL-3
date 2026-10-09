@@ -1,11 +1,11 @@
 task: detect
 mode: train
 model: /app/yolo11n.pt
-data: /app/Data/data.yaml
-epochs: 3
+data: /app/Data/runtime_data.yaml
+epochs: 30
 time: null
 patience: 100
-batch: 2
+batch: 8
 imgsz: 896
 save: true
 save_period: -1

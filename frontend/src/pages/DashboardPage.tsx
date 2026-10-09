@@ -72,7 +72,7 @@ export default function DashboardPage() {
   }, [])
 
   // Handle tournament click/selection
-  const handleSelectTournament = async (tourney: Tournament) => {
+  const handleSelectTournament = async (tourney: Tournament, scrollToLeaderboard = false) => {
     setSelectedTournament(tourney)
     setActiveTournament(tourney)
 
@@ -82,66 +82,82 @@ export default function DashboardPage() {
       const sList = Array.isArray(s) ? s : (s && Array.isArray((s as any).items) ? (s as any).items : [])
       setTournamentSessions(sList)
 
-      if (sList.length > 0) {
-        const ongoing = sList.find((item: Session) => item.status === 'active') || sList[0]
+      const ongoing = sList.find((item: Session) => item.status === 'active') || (sList.length > 0 ? sList[0] : null)
+      if (ongoing) {
         setActiveSession(ongoing)
       }
 
       // Fetch tournament-wide leaderboard
-      await fetchLeaderboardData(tourney, sList.length > 0 ? sList[0] : null, leaderboardScope)
+      await fetchLeaderboardData(tourney, ongoing, leaderboardScope)
     } catch (err) {
       console.error('Failed to load tournament sessions:', err)
     }
+
+    if (scrollToLeaderboard) {
+      setTimeout(() => {
+        const el = document.getElementById('tournament-live-dashboard-section')
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      }, 60)
+    }
   }
 
-  // Initial load
-  const loadInitialData = useCallback(async () => {
-    try {
-      setLoading(true)
-      const t = await tournamentsApi.list({ limit: 50 })
-      const tList = Array.isArray(t) ? t : (t && Array.isArray((t as any).items) ? (t as any).items : [])
-      setTournaments(tList)
+  // Initial load on mount
+  useEffect(() => {
+    let isMounted = true
+    const init = async () => {
+      try {
+        setLoading(true)
+        const t = await tournamentsApi.list({ limit: 50 })
+        const tList = Array.isArray(t) ? t : (t && Array.isArray((t as any).items) ? (t as any).items : [])
+        if (!isMounted) return
+        setTournaments(tList)
 
-      if (tList.length > 0) {
-        const current = activeTournament || tList[0]
-        setSelectedTournament(current)
-        setActiveTournament(current)
+        if (tList.length > 0) {
+          const current = activeTournament || tList[0]
+          setSelectedTournament(current)
+          setActiveTournament(current)
 
-        // Load sessions for all tournaments for aggregate metrics
-        const promises = tList.slice(0, 5).map((tourney: Tournament) => 
-          sessionsApi.listForTournament(tourney.id).catch(() => [])
-        )
-        const results = await Promise.all(promises)
-        const flattened = results.flatMap(res => 
-          Array.isArray(res) ? res : (res && Array.isArray((res as any).items) ? (res as any).items : [])
-        )
-        setAllSessions(flattened)
+          // Load sessions for aggregate metrics
+          const promises = tList.slice(0, 5).map((tourney: Tournament) => 
+            sessionsApi.listForTournament(tourney.id).catch(() => [])
+          )
+          const results = await Promise.all(promises)
+          const flattened = results.flatMap(res => 
+            Array.isArray(res) ? res : (res && Array.isArray((res as any).items) ? (res as any).items : [])
+          )
+          if (!isMounted) return
+          setAllSessions(flattened)
 
-        // Load sessions for selected tournament
-        const s = await sessionsApi.listForTournament(current.id)
-        const sList = Array.isArray(s) ? s : (s && Array.isArray((s as any).items) ? (s as any).items : [])
-        setTournamentSessions(sList)
+          // Load sessions for selected tournament
+          const s = await sessionsApi.listForTournament(current.id)
+          const sList = Array.isArray(s) ? s : (s && Array.isArray((s as any).items) ? (s as any).items : [])
+          if (!isMounted) return
+          setTournamentSessions(sList)
 
-        if (!activeSession && sList.length > 0) {
-          const ongoing = sList.find((item: Session) => item.status === 'active') || sList[0]
-          setActiveSession(ongoing)
+          const ongoing = activeSession || sList.find((item: Session) => item.status === 'active') || (sList.length > 0 ? sList[0] : null)
+          if (ongoing && !activeSession) {
+            setActiveSession(ongoing)
+          }
+
+          // Fetch tournament leaderboard
+          await fetchLeaderboardData(current, ongoing, leaderboardScope)
         }
 
-        // Fetch tournament leaderboard
-        await fetchLeaderboardData(current, activeSession || (sList.length > 0 ? sList[0] : null), leaderboardScope)
+        await fetchRecentActivity()
+      } catch (err) {
+        console.error('Error loading dashboard:', err)
+      } finally {
+        if (isMounted) setLoading(false)
       }
-
-      await fetchRecentActivity()
-    } catch (err) {
-      console.error('Error loading dashboard:', err)
-    } finally {
-      setLoading(false)
     }
-  }, [activeTournament, activeSession, leaderboardScope, setActiveTournament, setActiveSession, fetchLeaderboardData, fetchRecentActivity])
 
-  useEffect(() => {
-    loadInitialData()
-  }, [loadInitialData])
+    init()
+    return () => {
+      isMounted = false
+    }
+  }, []) // Run once on component mount
 
   // Real-time live score updates
   useEffect(() => {
@@ -165,55 +181,6 @@ export default function DashboardPage() {
 
   return (
     <div className="p-6 space-y-6 animate-in">
-      {/* Top Banner & Active Session Switcher */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 glass-card p-5 border-gold-500/20 bg-gradient-to-r from-navy-900 via-navy-800 to-navy-900 shadow-xl">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-gold-500/20 text-gold-400 border border-gold-500/30 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5" />
-              Championship Leaderboard Hub
-            </span>
-            {selectedTournament && (
-              <span className="text-xs text-slate-300 font-medium flex items-center gap-1.5 bg-navy-950/60 px-2.5 py-1 rounded-full border border-navy-700">
-                <Trophy className="w-3.5 h-3.5 text-gold-400" />
-                <span>Selected: <strong className="text-gold-400">{selectedTournament.name}</strong></span>
-              </span>
-            )}
-          </div>
-          <h1 className="text-2xl font-black text-slate-100 tracking-tight">
-            Tournament Live Dashboard
-          </h1>
-          <p className="text-xs text-slate-400">
-            Tournament-wise live scoring, archer roster rankings, and real-time score population
-          </p>
-        </div>
-
-        {/* Action Controls */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <button
-            onClick={() => navigate('/scoring')}
-            className="btn-primary text-xs py-2 px-3 flex items-center gap-1.5 shadow-md"
-          >
-            <Play className="w-3.5 h-3.5 fill-current" />
-            Live Scoring
-          </button>
-
-          <button
-            onClick={() => {
-              if (selectedTournament) {
-                fetchLeaderboardData(selectedTournament, activeSession, leaderboardScope)
-              }
-              fetchRecentActivity()
-            }}
-            disabled={loading || leaderboardLoading}
-            className="btn-ghost text-xs p-2"
-            title="Refresh leaderboard and scores"
-          >
-            <RefreshCw className={cn('w-4 h-4', (loading || leaderboardLoading) && 'animate-spin')} />
-          </button>
-        </div>
-      </div>
-
       {/* Interactive KPI Cards (Click to Open Modals) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* 1. Tournaments KPI Card */}
@@ -320,8 +287,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 🏆 TOURNAMENT SELECTOR RIBBON (Click any tournament to load its players & scores) */}
-      <div className="glass-card p-5 space-y-3 border-gold-500/20">
+      {/* 🏆 TOURNAMENT SELECTOR RIBBON (Fixed height & scrollable with smooth leaderboard jump) */}
+      <div className="glass-card p-5 space-y-3 border-gold-500/20 shadow-lg">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Trophy className="w-5 h-5 text-gold-400" />
@@ -332,55 +299,106 @@ export default function DashboardPage() {
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {tournaments.map((tourney) => {
-            const isSelected = selectedTournament?.id === tourney.id
-            return (
-              <div
-                key={tourney.id}
-                onClick={() => handleSelectTournament(tourney)}
-                className={cn(
-                  'p-4 rounded-xl border transition-all cursor-pointer relative overflow-hidden group',
-                  isSelected
-                    ? 'bg-gradient-to-b from-gold-500/15 via-navy-800 to-navy-900 border-gold-500 shadow-lg shadow-gold-500/10'
-                    : 'bg-navy-900/60 border-navy-700/60 hover:border-gold-500/40 hover:bg-navy-800/50'
-                )}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <h3 className={cn(
-                      'text-sm font-bold truncate transition-colors',
-                      isSelected ? 'text-gold-400' : 'text-slate-200 group-hover:text-gold-300'
-                    )}>
-                      {tourney.name}
-                    </h3>
-                    <p className="text-xs text-slate-400 flex items-center gap-1 mt-1 truncate">
-                      <MapPin className="w-3 h-3 text-slate-500 flex-shrink-0" />
-                      <span>{tourney.location || 'Archery Arena'}</span>
-                    </p>
-                    <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                      <Calendar className="w-3 h-3 flex-shrink-0" />
-                      <span>{formatDate(tourney.start_date)}</span>
-                    </p>
-                  </div>
-                  {isSelected && (
-                    <div className="w-6 h-6 rounded-full bg-gold-500 text-navy-950 flex items-center justify-center flex-shrink-0">
-                      <CheckCircle className="w-4 h-4 fill-current" />
-                    </div>
+        <div className="max-h-[260px] overflow-y-auto pr-1.5 scrollbar-thin scrollbar-thumb-navy-700 hover:scrollbar-thumb-gold-500/40 scrollbar-track-transparent">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {tournaments.map((tourney) => {
+              const isSelected = selectedTournament?.id === tourney.id
+              return (
+                <div
+                  key={tourney.id}
+                  onClick={() => handleSelectTournament(tourney, true)}
+                  className={cn(
+                    'p-4 rounded-xl border transition-all cursor-pointer relative overflow-hidden group',
+                    isSelected
+                      ? 'bg-gradient-to-b from-gold-500/15 via-navy-800 to-navy-900 border-gold-500 shadow-lg shadow-gold-500/10'
+                      : 'bg-navy-900/60 border-navy-700/60 hover:border-gold-500/40 hover:bg-navy-800/50'
                   )}
-                </div>
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <h3 className={cn(
+                        'text-sm font-bold truncate transition-colors',
+                        isSelected ? 'text-gold-400' : 'text-slate-200 group-hover:text-gold-300'
+                      )}>
+                        {tourney.name}
+                      </h3>
+                      <p className="text-xs text-slate-400 flex items-center gap-1 mt-1 truncate">
+                        <MapPin className="w-3 h-3 text-slate-500 flex-shrink-0" />
+                        <span>{tourney.location || 'Archery Arena'}</span>
+                      </p>
+                      <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                        <Calendar className="w-3 h-3 flex-shrink-0" />
+                        <span>{formatDate(tourney.start_date)}</span>
+                      </p>
+                    </div>
+                    {isSelected && (
+                      <div className="w-6 h-6 rounded-full bg-gold-500 text-navy-950 flex items-center justify-center flex-shrink-0">
+                        <CheckCircle className="w-4 h-4 fill-current" />
+                      </div>
+                    )}
+                  </div>
 
-                <div className="mt-3 pt-2.5 border-t border-navy-700/50 flex items-center justify-between text-xs">
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
-                    Active
-                  </span>
-                  <span className="text-slate-400 group-hover:text-gold-400 transition-colors flex items-center gap-1 text-[11px]">
-                    View Leaderboard <ChevronRight className="w-3 h-3" />
-                  </span>
+                  <div className="mt-3 pt-2.5 border-t border-navy-700/50 flex items-center justify-between text-xs">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                      Active
+                    </span>
+                    <span className="text-slate-400 group-hover:text-gold-400 transition-colors flex items-center gap-1 text-[11px]">
+                      View Leaderboard <ChevronRight className="w-3 h-3" />
+                    </span>
+                  </div>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* 🎯 TOURNAMENT LIVE DASHBOARD BANNER (Placed right above the Leaderboard) */}
+      <div id="tournament-live-dashboard-section" className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 glass-card p-5 border-gold-500/20 bg-gradient-to-r from-navy-900 via-navy-800 to-navy-900 shadow-xl scroll-mt-6">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-gold-500/20 text-gold-400 border border-gold-500/30 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5" />
+              Championship Leaderboard Hub
+            </span>
+            {selectedTournament && (
+              <span className="text-xs text-slate-300 font-medium flex items-center gap-1.5 bg-navy-950/60 px-2.5 py-1 rounded-full border border-navy-700">
+                <Trophy className="w-3.5 h-3.5 text-gold-400" />
+                <span>Selected: <strong className="text-gold-400">{selectedTournament.name}</strong></span>
+              </span>
+            )}
+          </div>
+          <h1 className="text-2xl font-black text-slate-100 tracking-tight">
+            Tournament Live Dashboard
+          </h1>
+          <p className="text-xs text-slate-400">
+            Tournament-wise live scoring, archer roster rankings, and real-time score population
+          </p>
+        </div>
+
+        {/* Action Controls */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={() => navigate('/scoring')}
+            className="btn-primary text-xs py-2 px-3 flex items-center gap-1.5 shadow-md"
+          >
+            <Play className="w-3.5 h-3.5 fill-current" />
+            Live Scoring
+          </button>
+
+          <button
+            onClick={() => {
+              if (selectedTournament) {
+                fetchLeaderboardData(selectedTournament, activeSession, leaderboardScope)
+              }
+              fetchRecentActivity()
+            }}
+            disabled={loading || leaderboardLoading}
+            className="btn-ghost text-xs p-2"
+            title="Refresh leaderboard and scores"
+          >
+            <RefreshCw className={cn('w-4 h-4', (loading || leaderboardLoading) && 'animate-spin')} />
+          </button>
         </div>
       </div>
 
