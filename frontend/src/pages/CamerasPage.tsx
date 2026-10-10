@@ -7,6 +7,8 @@ import {
 } from 'lucide-react'
 import { useCameraStore } from '@/store/cameraStore'
 import { camerasApi } from '@/api/cameras'
+import { tournamentsApi } from '@/api/tournaments'
+import { sessionsApi } from '@/api/sessions'
 import { useSessionStore } from '@/store/sessionStore'
 import { useAuthStore } from '@/store/authStore'
 import { useCameraPreview } from '@/hooks/useCameraPreview'
@@ -663,11 +665,35 @@ function EditCameraModal({
 // ─── Main Cameras Page Component ─────────────────────────────────────────────
 export default function CamerasPage() {
   const { cameras, setCameras, updateCameraStatus } = useCameraStore()
-  const { activeSession } = useSessionStore()
+  const { activeSession, setActiveSession, setActiveTournament } = useSessionStore()
   const { user } = useAuthStore()
   const canManageCameras = user?.role === 'admin' || user?.role === 'scorer'
   const [loading, setLoading] = useState(false)
   const [quickSettingObs, setQuickSettingObs] = useState(false)
+
+  // Auto-initialize active tournament & session if not loaded yet
+  useEffect(() => {
+    const initSession = async () => {
+      if (!activeSession) {
+        try {
+          const t = await tournamentsApi.list({ limit: 10 })
+          const tList = Array.isArray(t) ? t : (t && Array.isArray((t as any).items) ? (t as any).items : [])
+          if (tList.length > 0) {
+            setActiveTournament(tList[0])
+            const s = await sessionsApi.listForTournament(tList[0].id)
+            const sList = Array.isArray(s) ? s : (s && Array.isArray((s as any).items) ? (s as any).items : [])
+            if (sList.length > 0) {
+              const ongoing = sList.find((item: any) => item.status === 'active') || sList[0]
+              setActiveSession(ongoing)
+            }
+          }
+        } catch {
+          // Ignore fallback
+        }
+      }
+    }
+    initSession()
+  }, [activeSession, setActiveSession, setActiveTournament])
 
   const numLanes = activeSession?.num_lanes || 6
 
@@ -1219,14 +1245,18 @@ export default function CamerasPage() {
                 onDragLeave={() => setDragOverLaneSlot(null)}
                 onDrop={() => handleDropOnLaneSlot(laneNum)}
                 onClick={() => {
-                  if (assignedCam) {
-                    setEditingCamera(assignedCam)
-                  } else if (canManageCameras) {
-                    handleOpenAddModal(laneNum)
+                  if (canManageCameras) {
+                    if (assignedCam) {
+                      setEditingCamera(assignedCam)
+                    } else {
+                      handleOpenAddModal(laneNum)
+                    }
                   }
                 }}
                 className={cn(
-                  'p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between text-left group relative',
+                  'p-3 rounded-xl border transition-all flex flex-col justify-between text-left group relative',
+                  canManageCameras && 'cursor-pointer',
+                  !canManageCameras && 'cursor-default',
                   isSlotDropTarget && 'ring-2 ring-gold-400 scale-105 bg-gold-500/20 border-gold-400',
                   !isSlotDropTarget && isLaneStreamingLive && 'bg-emerald-950/40 border-emerald-500 shadow-md shadow-emerald-500/10 ring-1 ring-emerald-500/40',
                   !isSlotDropTarget && !isLaneStreamingLive && assignedCam && 'bg-navy-900/90 border-gold-500/40 hover:border-gold-400 shadow-md shadow-gold-500/5',
@@ -1270,10 +1300,12 @@ export default function CamerasPage() {
                       {assignedCam.url || assignedCam.camera_type}
                     </p>
                   </div>
-                ) : (
+                ) : canManageCameras ? (
                   <div className="flex items-center gap-1 text-[11px] font-semibold text-gold-400/80 group-hover:text-gold-300">
                     <Plus className="w-3 h-3" /> Assign Stream
                   </div>
+                ) : (
+                  <span className="text-[11px] text-slate-500 font-mono">Unassigned</span>
                 )}
               </div>
             )

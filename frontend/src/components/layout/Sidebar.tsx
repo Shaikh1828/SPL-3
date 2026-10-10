@@ -7,22 +7,36 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { SidebarTrainingPanel } from '@/components/training/SidebarTrainingPanel'
+import { useAuthStore } from '@/store/authStore'
 
-const navItems = [
+interface NavItemConfig {
+  to: string
+  icon: any
+  label: string
+  roles?: string[]
+}
+
+const navItems: NavItemConfig[] = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/scoring', icon: Target, label: 'Scoring' },
-  { to: '/training', icon: BrainCircuit, label: 'Model Training' },
+  { to: '/training', icon: BrainCircuit, label: 'Model Training', roles: ['admin', 'scorer'] },
   { to: '/pose-analysis', icon: Crosshair, label: 'Pose Biomechanics' },
   { to: '/reports', icon: BarChart3, label: 'Reports' },
   { to: '/cameras', icon: Camera, label: 'Cameras' },
   { to: '/tournaments', icon: Trophy, label: 'Tournaments' },
-  { to: '/users', icon: Users, label: 'Users' },
+  { to: '/users', icon: Users, label: 'Users', roles: ['admin', 'scorer'] },
   { to: '/system', icon: Activity, label: 'System Status' },
-  { to: '/settings', icon: Settings, label: 'Settings' },
+  { to: '/settings', icon: Settings, label: 'Settings', roles: ['admin', 'scorer'] },
 ]
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
+  const { user } = useAuthStore()
+
+  const visibleNavItems = navItems.filter(item => {
+    if (!item.roles) return true
+    return user?.role && item.roles.includes(user.role)
+  })
 
   return (
     <aside
@@ -46,7 +60,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
-        {navItems.map(({ to, icon: Icon, label }) => (
+        {visibleNavItems.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}

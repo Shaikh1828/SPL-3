@@ -238,12 +238,15 @@ async def upload_score_image(
             )
 
         # Determine start arrow number sequentially if not provided
+        existing_count = db.query(Score).filter(
+            Score.session_archer_id == session_archer_id,
+            Score.round == round
+        ).count()
         if arrow_num is None:
-            existing_count = db.query(Score).filter(
-                Score.session_archer_id == session_archer_id,
-                Score.round == round
-            ).count()
-            arrow_num = existing_count + 1
+            if len(arrows) > 1 or existing_count >= 6:
+                arrow_num = 1
+            else:
+                arrow_num = existing_count + 1
 
         # Save image
         image_id = await loop.run_in_executor(
@@ -265,28 +268,63 @@ async def upload_score_image(
             detection
         )
 
-        # Record each score in the database
+        # Record or update each score in the database
         last_score = None
         for idx, arr in enumerate(arrows):
             arr_zone = arr.get("zone") or 0
             arr_points = arr.get("points") or 0
             arr_conf = arr.get("confidence") or 0.0
             curr_arrow_num = arrow_num + idx
-            
-            score = ScoringService.record_score_with_retry(
-                db,
-                session_archer_id,
-                round,
-                curr_arrow_num,
-                arr_zone,
-                arr_points,
-                image_id,
-                arr_conf,
-                max_retries=2,
-                base_backoff=1.0,
-            )
-            if score:
-                last_score = score
+
+            existing_arrow = db.query(Score).filter(
+                Score.session_archer_id == session_archer_id,
+                Score.round == round,
+                Score.arrow_num == curr_arrow_num,
+            ).first()
+
+            if existing_arrow:
+                existing_arrow.points = int(arr_points)
+                existing_arrow.zone = int(arr_zone)
+                existing_arrow.confidence = float(arr_conf)
+                existing_arrow.image_id = image_id
+                existing_arrow.validated_by_ai = True
+                db.commit()
+                last_score = existing_arrow
+            else:
+                score = ScoringService.record_score_with_retry(
+                    db,
+                    session_archer_id,
+                    round,
+                    curr_arrow_num,
+                    arr_zone,
+                    arr_points,
+                    image_id,
+                    arr_conf,
+                    max_retries=2,
+                    base_backoff=1.0,
+                )
+                if score:
+                    last_score = score
+
+        if arrow_num == 1 and len(arrows) > 1:
+            extraneous = db.query(Score).filter(
+                Score.session_archer_id == session_archer_id,
+                Score.round == round,
+                Score.arrow_num > len(arrows),
+            ).all()
+            for extra in extraneous:
+                db.delete(extra)
+            db.commit()
+
+        # Recalculate session archer's total score
+        from sqlalchemy import func
+        session_archer.total_score = (
+            db.query(func.sum(Score.points))
+            .filter(Score.session_archer_id == session_archer.id)
+            .scalar()
+            or 0
+        )
+        db.commit()
 
         if not last_score:
             raise HTTPException(
@@ -1016,6 +1054,10 @@ async def override_score_record(
         score.zone = override_data.zone
         score.points = override_data.points
         score.validated_by_ai = False  # Set to False because it's manually overridden
+        if override_data.reason and ("(x" in override_data.reason.lower() or "bullseye" in override_data.reason.lower() or override_data.reason.strip() == "X"):
+            score.image_id = "x_hit.jpg"
+        elif score.image_id == "x_hit.jpg" and override_data.points != 10:
+            score.image_id = None
         db.commit()
         
         # Recalculate session archer's total score
@@ -1646,21 +1688,18 @@ async def capture_lane_camera_score(
     conf_list = [arr.get("confidence") or 0.0 for arr in arrows if (arr.get("points") or 0) > 0]
     avg_conf = (sum(conf_list) / len(conf_list)) if conf_list else 0.0
 
-    # Determine arrow sequence number
-    existing_count = db.query(Score).filter(
-        Score.session_archer_id == session_archer.id,
-        Score.round == round_num,
-    ).count()
-    arrow_num = existing_count + 1
+    # Limit to arrows_per_round (e.g. 6)
+    arrows_per_round = session.arrows_per_round or 6
+    target_arrows = arrows[:arrows_per_round] if len(arrows) >= arrows_per_round else arrows
 
-    # Save raw and annotated images
+    # Save raw and annotated images for this round scan
     image_id = await loop.run_in_executor(
         get_executor(),
         image_service.save_image,
         frame_bytes,
         session_id,
         round_num,
-        arrow_num,
+        1,
     )
 
     await loop.run_in_executor(
@@ -1672,26 +1711,108 @@ async def capture_lane_camera_score(
         detection,
     )
 
-    # Record score in database
-    recorded_score = ScoringService.record_score_with_retry(
-        db=db,
-        session_archer_id=session_archer.id,
-        round=round_num,
-        arrow_num=arrow_num,
-        zone=zone,
-        points=points,
-        image_id=image_id,
-        confidence=avg_conf,
+    # Synchronize all arrows for this archer in round_num
+    existing_scores = (
+        db.query(Score)
+        .filter(
+            Score.session_archer_id == session_archer.id,
+            Score.round == round_num,
+        )
+        .order_by(Score.arrow_num.asc())
+        .all()
     )
+    existing_map = {s.arrow_num: s for s in existing_scores}
 
-    if not recorded_score:
+    recorded_scores = []
+    for idx, arr in enumerate(target_arrows):
+        curr_arrow_num = idx + 1
+        arr_pts = arr.get("points") if arr.get("points") is not None else (arr.get("zone") or 0)
+        if arr_pts is None:
+            arr_pts = 0
+        arr_zn = arr.get("zone") if arr.get("zone") is not None else arr_pts
+        if isinstance(arr_zn, str):
+            if arr_zn == "X":
+                arr_zn = 10
+            elif arr_zn == "M":
+                arr_zn = 0
+            elif arr_zn.isdigit():
+                arr_zn = int(arr_zn)
+            else:
+                arr_zn = arr_pts
+        arr_c = float(arr.get("confidence") or avg_conf)
+
+        if curr_arrow_num in existing_map:
+            score_rec = existing_map[curr_arrow_num]
+            score_rec.points = int(arr_pts)
+            score_rec.zone = int(arr_zn)
+            score_rec.confidence = arr_c
+            score_rec.image_id = image_id
+            score_rec.validated_by_ai = True
+            score_rec.session_id = session_id
+        else:
+            score_rec = Score(
+                session_id=session_id,
+                session_archer_id=session_archer.id,
+                round=round_num,
+                arrow_num=curr_arrow_num,
+                points=int(arr_pts),
+                zone=int(arr_zn),
+                confidence=arr_c,
+                image_id=image_id,
+                validated_by_ai=True,
+            )
+            db.add(score_rec)
+        recorded_scores.append(score_rec)
+
+    # Clean up any extraneous scores beyond the detected count in this round (e.g. old arrow 7+)
+    for s in existing_scores:
+        if s.arrow_num > len(target_arrows):
+            db.delete(s)
+
+    db.commit()
+
+    # Recalculate session archer's total score
+    from sqlalchemy import func
+    total_archer_points = (
+        db.query(func.sum(Score.points))
+        .filter(Score.session_archer_id == session_archer.id)
+        .scalar()
+        or 0
+    )
+    session_archer.total_score = total_archer_points
+    session_archer.current_round = max(session_archer.current_round, round_num)
+    db.commit()
+
+    # Invalidate cache
+    from src.cache import invalidate_leaderboard_cache
+    invalidate_leaderboard_cache(session_id)
+
+    for s in recorded_scores:
+        db.refresh(s)
+
+    primary_score = recorded_scores[0] if recorded_scores else None
+    if not primary_score:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to record captured camera score",
         )
 
-    recorded_score.method = detection.get("method", "camera_vision")
-    return recorded_score
+    primary_score.method = detection.get("method", "camera_vision")
+
+    # Broadcast event
+    publish_event(
+        EventType.SCORE_RECORDED,
+        {
+            "session_id": session_id,
+            "session_archer_id": session_archer.id,
+            "round": round_num,
+            "action": "single_lane_captured",
+            "scores_count": len(target_arrows),
+            "total_points": sum(s.points for s in recorded_scores),
+        },
+    )
+
+    return primary_score
 
 
 

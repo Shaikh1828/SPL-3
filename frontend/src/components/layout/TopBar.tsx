@@ -17,19 +17,26 @@ export function TopBar() {
 
   return (
     <header className="h-14 bg-navy-900 border-b border-navy-700 flex items-center justify-between px-6">
-      {/* Active session pill */}
-      <div className="flex items-center gap-3">
+      {/* Left branding & Active session pill */}
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2.5 pr-3 border-r border-navy-700/80">
+          <img src="/archery-icon.svg" alt="ArcheryScore" className="w-7 h-7 object-contain drop-shadow-[0_0_8px_rgba(234,179,8,0.4)]" />
+          <span className="hidden sm:inline-block font-extrabold text-sm tracking-tight text-white font-mono">
+            ARCHERY<span className="text-gold-400">SCORE</span>
+          </span>
+        </div>
+
         {activeSession ? (
-          <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-3 py-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs font-medium text-emerald-400">
-              Live: {activeSession.name}
+          <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-3 py-1 shadow-sm">
+            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
+            <span className="text-xs font-semibold text-emerald-300">
+              Live Match: {activeSession.name}
             </span>
           </div>
         ) : (
           <div className="flex items-center gap-2 bg-slate-500/10 border border-slate-500/20 rounded-full px-3 py-1">
-            <Activity className="w-3 h-3 text-slate-500" />
-            <span className="text-xs text-slate-500">No Active Session</span>
+            <Activity className="w-3 h-3 text-slate-400" />
+            <span className="text-xs text-slate-400">No Active Match</span>
           </div>
         )}
       </div>

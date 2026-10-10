@@ -346,7 +346,7 @@ export default function ScoringPage() {
       await scoresApi.override(scoreId, {
         zone: zone,
         points: points,
-        reason: 'Rapid ScorePad manual slot adjustment',
+        reason: isX ? 'Rapid ScorePad manual slot adjustment (X - Bullseye)' : 'Rapid ScorePad manual slot adjustment',
       })
       toast.success(`Score updated: ${isX ? 'X (10 pts)' : points === 0 ? 'Miss' : `${points} pts`}`)
       await loadSessionData()
@@ -391,11 +391,11 @@ export default function ScoringPage() {
       }
       const score = await scoresApi.captureLaneScore(activeSession.id, laneId, currentEnd)
       setLastScores(prev => ({ ...prev, [laneId]: score }))
+      await loadSessionData()
       toast.success(
-        `AI Arrow Scored for ${laneArcher.archer_name}: ${score.points} pts (Conf: ${Math.round((score.confidence ?? 0.95) * 100)}%)`,
+        `AI Scan Complete for ${laneArcher.archer_name}: End ${currentEnd} Target Synced (Conf: ${Math.round((score.confidence ?? 0.95) * 100)}%)`,
         { id: toastId }
       )
-      await loadSessionData()
     } catch (err: any) {
       toast.error(err.response?.data?.detail || 'Camera vision capture failed', { id: toastId })
     } finally {
@@ -835,58 +835,66 @@ export default function ScoringPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2.5 w-full md:w-auto flex-wrap">
-                      {/* Device Selector */}
-                      <select
-                        value={cameraStream.selectedDeviceId}
-                        onChange={(e) => cameraStream.setSelectedDeviceId(e.target.value)}
-                        className="bg-navy-950 border border-navy-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-gold-500"
-                      >
-                        {cameraStream.devices.length === 0 && (
-                          <option value="">No Camera Detected</option>
+                    {canScore ? (
+                      <div className="flex items-center gap-2.5 w-full md:w-auto flex-wrap">
+                        {/* Device Selector */}
+                        <select
+                          value={cameraStream.selectedDeviceId}
+                          onChange={(e) => cameraStream.setSelectedDeviceId(e.target.value)}
+                          className="bg-navy-950 border border-navy-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-gold-500"
+                        >
+                          {cameraStream.devices.length === 0 && (
+                            <option value="">No Camera Detected</option>
+                          )}
+                          {cameraStream.devices.map((d) => (
+                            <option key={d.deviceId} value={d.deviceId}>
+                              {d.isObs ? `🎥 ${d.label}` : `📷 ${d.label}`}
+                            </option>
+                          ))}
+                        </select>
+
+                        {/* Lane Target */}
+                        <select
+                          value={String(cameraStream.activeLane)}
+                          onChange={(e) => cameraStream.setActiveLane(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                          className="bg-navy-950 border border-navy-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-gold-500"
+                        >
+                          <option value="all">🌐 Broadcast to All Lanes</option>
+                          {assignments.map((a) => (
+                            <option key={a.lane} value={a.lane}>
+                              🎯 Bind to Lane {a.lane}
+                            </option>
+                          ))}
+                        </select>
+
+                        {/* Toggle Stream Button */}
+                        {cameraStream.isStreaming ? (
+                          <button
+                            type="button"
+                            onClick={() => cameraStream.stopStream()}
+                            className="btn-ghost text-xs py-1.5 px-3 border border-red-500/40 text-red-400 hover:bg-red-500/10 flex items-center gap-1.5"
+                          >
+                            <VideoOff className="w-3.5 h-3.5" />
+                            Stop Stream
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => cameraStream.startStream(cameraStream.selectedDeviceId, cameraStream.activeLane)}
+                            className="btn-primary text-xs py-1.5 px-3.5 font-bold flex items-center gap-1.5 shadow-md"
+                          >
+                            <Video className="w-3.5 h-3.5" />
+                            Connect Live Stream
+                          </button>
                         )}
-                        {cameraStream.devices.map((d) => (
-                          <option key={d.deviceId} value={d.deviceId}>
-                            {d.isObs ? `🎥 ${d.label}` : `📷 ${d.label}`}
-                          </option>
-                        ))}
-                      </select>
-
-                      {/* Lane Target */}
-                      <select
-                        value={String(cameraStream.activeLane)}
-                        onChange={(e) => cameraStream.setActiveLane(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-                        className="bg-navy-950 border border-navy-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-gold-500"
-                      >
-                        <option value="all">🌐 Broadcast to All Lanes</option>
-                        {assignments.map((a) => (
-                          <option key={a.lane} value={a.lane}>
-                            🎯 Bind to Lane {a.lane}
-                          </option>
-                        ))}
-                      </select>
-
-                      {/* Toggle Stream Button */}
-                      {cameraStream.isStreaming ? (
-                        <button
-                          type="button"
-                          onClick={() => cameraStream.stopStream()}
-                          className="btn-ghost text-xs py-1.5 px-3 border border-red-500/40 text-red-400 hover:bg-red-500/10 flex items-center gap-1.5"
-                        >
-                          <VideoOff className="w-3.5 h-3.5" />
-                          Stop Stream
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => cameraStream.startStream(cameraStream.selectedDeviceId, cameraStream.activeLane)}
-                          className="btn-primary text-xs py-1.5 px-3.5 font-bold flex items-center gap-1.5 shadow-md"
-                        >
-                          <Video className="w-3.5 h-3.5" />
-                          Connect Live Stream
-                        </button>
-                      )}
-                    </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-navy-950 border border-navy-750 text-slate-400">
+                          {cameraStream.isStreaming ? '🟢 Live Broadcast Feed Active' : '⚪ Stream Standby'}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Call to action prompt */}
@@ -972,28 +980,37 @@ export default function ScoringPage() {
                             </div>
                           )}
 
-                          {lastScore && (
-                            <div className="p-3 bg-navy-900/80 rounded-xl border border-navy-700/80">
-                              <div className="flex justify-between items-center mb-1">
-                                <span className="text-xs font-semibold text-slate-300">Last Detection Result</span>
-                                <span className={cn("font-black font-mono text-sm", getConfidenceColor(lastScore.confidence ?? 1))}>
-                                  {lastScore.points} pts
-                                </span>
+                          {lastScore && (() => {
+                            const laneEndScores = allScores.filter(s => s.session_archer_id === laneArcher?.id && s.round === currentEnd)
+                            const isMultiArrow = laneEndScores.length > 1
+                            const displayPoints = isMultiArrow ? laneEndScores.reduce((sum, s) => sum + s.points, 0) : lastScore.points
+                            return (
+                              <div className="p-3 bg-navy-900/80 rounded-xl border border-navy-700/80">
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-xs font-semibold text-slate-300">
+                                    {isMultiArrow ? `End ${currentEnd} AI Scan Total` : 'Last Detection Result'}
+                                  </span>
+                                  <span className={cn("font-black font-mono text-sm", getConfidenceColor(lastScore.confidence ?? 1))}>
+                                    {displayPoints} pts
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between text-[11px] text-slate-400">
+                                  <span>
+                                    {isMultiArrow ? `${laneEndScores.length} Arrows / End ${lastScore.round}` : `Arrow ${lastScore.arrow_num} / End ${lastScore.round}`}
+                                  </span>
+                                  <button
+                                    onClick={() => {
+                                      setSelectedScore(lastScore)
+                                      setIsScoreModalOpen(true)
+                                    }}
+                                    className="text-gold-400 hover:text-gold-300 font-semibold flex items-center gap-1"
+                                  >
+                                    <Eye className="w-3 h-3" /> View Annotated
+                                  </button>
+                                </div>
                               </div>
-                              <div className="flex items-center justify-between text-[11px] text-slate-400">
-                                <span>Arrow {lastScore.arrow_num} / End {lastScore.round}</span>
-                                <button
-                                  onClick={() => {
-                                    setSelectedScore(lastScore)
-                                    setIsScoreModalOpen(true)
-                                  }}
-                                  className="text-gold-400 hover:text-gold-300 font-semibold flex items-center gap-1"
-                                >
-                                  <Eye className="w-3 h-3" /> View Annotated
-                                </button>
-                              </div>
-                            </div>
-                          )}
+                            )
+                          })()}
                         </div>
                       )
                     })}
@@ -1081,7 +1098,7 @@ export default function ScoringPage() {
                                         )}
                                         title="Click to view/override score"
                                       >
-                                        {s.points === 10 && s.zone === 10 ? 'X' : s.points}
+                                        {s.image_id === 'x_hit.jpg' ? 'X' : s.points}
                                       </span>
                                     ))}
                                     {endSc.length === 0 && <span className="text-slate-500">—</span>}

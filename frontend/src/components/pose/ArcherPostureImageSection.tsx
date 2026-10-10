@@ -10,6 +10,8 @@ import type {
   RangeLaneArcherItem
 } from '@/types'
 import { toast } from 'react-hot-toast'
+import { useAuthStore } from '@/store/authStore'
+import { ShieldAlert } from 'lucide-react'
 
 interface ArcherPostureImageSectionProps {
   selectedLane: RangeLaneArcherItem | null
@@ -22,6 +24,8 @@ export default function ArcherPostureImageSection({
   lanes,
   onSelectLane
 }: ArcherPostureImageSectionProps) {
+  const { user } = useAuthStore()
+  const canControl = user?.role === 'admin' || user?.role === 'scorer'
   // ─── Input & Analysis State ───────────────────────────────────────────────
   const [selectedSample, setSelectedSample] = useState<string | null>(null)
   const [analysis, setAnalysis] = useState<PostureImageAnalysisResponse | null>(null)
@@ -383,6 +387,14 @@ export default function ArcherPostureImageSection({
 
   return (
     <div className="space-y-6">
+      {/* Role Alert for Spectator */}
+      {!canControl && (
+        <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-xs flex items-center gap-2.5">
+          <ShieldAlert className="w-4 h-4 shrink-0 text-amber-400" />
+          <span>Spectator Mode: Live camera posture telemetry and MediaPipe skeletal graphs are view-only (Uploads & snapshot evaluations disabled).</span>
+        </div>
+      )}
+
       {/* ─── Top Control Bar: Lane & Camera Context ───────────────────────── */}
       <div className="bg-navy-900 border border-navy-700 rounded-2xl p-4 shadow-xl">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
@@ -411,7 +423,7 @@ export default function ArcherPostureImageSection({
             </div>
           </div>
 
-          {/* Input Source Modes */}
+          {/* Input Source Modes (Upload only available for Scorer/Admin) */}
           <div className="flex items-center bg-navy-950 p-1 rounded-xl border border-navy-800 self-stretch lg:self-auto justify-center">
             <button
               onClick={() => setActiveSource('camera')}
@@ -423,22 +435,24 @@ export default function ArcherPostureImageSection({
             >
               <Camera className="w-3.5 h-3.5" /> Live Camera Feed
             </button>
-            <button
-              onClick={() => setActiveSource('upload')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                activeSource === 'upload'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Upload className="w-3.5 h-3.5" /> Upload Photo
-            </button>
+            {canControl && (
+              <button
+                onClick={() => setActiveSource('upload')}
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  activeSource === 'upload'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Upload className="w-3.5 h-3.5" /> Upload Photo
+              </button>
+            )}
           </div>
         </div>
       </div>
 
       {/* ─── Source 2: Upload Photo ───────────────────────────────────────── */}
-      {activeSource === 'upload' && (
+      {canControl && activeSource === 'upload' && (
         <div className="bg-navy-900 border border-navy-700 rounded-2xl p-6 shadow-xl">
           <div
             onClick={() => fileUploadInputRef.current?.click()}
@@ -477,51 +491,53 @@ export default function ArcherPostureImageSection({
                 Live Camera Feed (Lane {selectedLane?.lane_number || 1}: {selectedLane?.camera.name || 'Archer Cam'})
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Stream real-time video and grab high-resolution snapshots directly from the assigned shooter camera
+                Stream real-time video and examine high-resolution MediaPipe posture overlays from the shooter camera
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={currentDeviceId}
-                onChange={(e) => handleDeviceChange(e.target.value)}
-                className="bg-navy-950 border border-gold-500/40 rounded-xl px-3 py-2 text-xs font-semibold text-slate-100 focus:outline-none focus:border-gold-400 max-w-[260px] truncate"
-              >
-                {availableDevices.map((d, i) => {
-                  const isObs = (d as any).isObs || d.label.toLowerCase().includes('obs') || d.label.toLowerCase().includes('virtual')
-                  return (
-                    <option key={d.deviceId || i} value={d.deviceId}>
-                      {isObs ? '🎥 [OBS Virtual Camera] ' : '📹 '} {d.label || `Camera ${i + 1}`}
-                    </option>
-                  )
-                })}
-                {availableDevices.length === 0 && (
-                  <option value="">🎥 OBS Virtual Camera (Auto-Detect)</option>
-                )}
-              </select>
+            {canControl && (
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={currentDeviceId}
+                  onChange={(e) => handleDeviceChange(e.target.value)}
+                  className="bg-navy-950 border border-gold-500/40 rounded-xl px-3 py-2 text-xs font-semibold text-slate-100 focus:outline-none focus:border-gold-400 max-w-[260px] truncate"
+                >
+                  {availableDevices.map((d, i) => {
+                    const isObs = (d as any).isObs || d.label.toLowerCase().includes('obs') || d.label.toLowerCase().includes('virtual')
+                    return (
+                      <option key={d.deviceId || i} value={d.deviceId}>
+                        {isObs ? '🎥 [OBS Virtual Camera] ' : '📹 '} {d.label || `Camera ${i + 1}`}
+                      </option>
+                    )
+                  })}
+                  {availableDevices.length === 0 && (
+                    <option value="">🎥 OBS Virtual Camera (Auto-Detect)</option>
+                  )}
+                </select>
 
-              <button
-                onClick={isStreamLive ? stopCamera : () => startCamera()}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 ${
-                  isStreamLive
-                    ? 'bg-rose-600 hover:bg-rose-500 text-white'
-                    : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                }`}
-              >
-                <Camera className="w-3.5 h-3.5" />
-                {isStreamLive ? 'Disconnect' : 'Connect Camera'}
-              </button>
+                <button
+                  onClick={isStreamLive ? stopCamera : () => startCamera()}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 ${
+                    isStreamLive
+                      ? 'bg-rose-600 hover:bg-rose-500 text-white'
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  }`}
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                  {isStreamLive ? 'Disconnect' : 'Connect Camera'}
+                </button>
 
-              <button
-                onClick={analyzeAssignedLaneCamera}
-                disabled={isAnalyzing}
-                className="px-3.5 py-2 rounded-xl text-xs font-bold bg-navy-800 hover:bg-navy-700 border border-gold-500/40 text-gold-300 transition-all flex items-center gap-1.5 shadow-md hover:scale-[1.02]"
-                title="Fetch and evaluate the live camera frame assigned to this lane in the Camera section"
-              >
-                <Zap className="w-3.5 h-3.5 text-gold-400" />
-                Analyze Lane {selectedLane?.lane_number || 1} Feed
-              </button>
-            </div>
+                <button
+                  onClick={analyzeAssignedLaneCamera}
+                  disabled={isAnalyzing}
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold bg-navy-800 hover:bg-navy-700 border border-gold-500/40 text-gold-300 transition-all flex items-center gap-1.5 shadow-md hover:scale-[1.02]"
+                  title="Fetch and evaluate the live camera frame assigned to this lane in the Camera section"
+                >
+                  <Zap className="w-3.5 h-3.5 text-gold-400" />
+                  Analyze Lane {selectedLane?.lane_number || 1} Feed
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="relative aspect-video max-h-[460px] bg-black rounded-2xl overflow-hidden flex items-center justify-center border border-navy-800 shadow-2xl">
@@ -544,16 +560,18 @@ export default function ArcherPostureImageSection({
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                   LIVE STREAM ACTIVE {cameraStream.isStreaming ? '(OBS STREAM BRIDGE)' : ''}
                 </div>
-                <div className="absolute bottom-4 inset-x-0 flex justify-center z-20">
-                  <button
-                    onClick={captureCameraSnapshot}
-                    disabled={isAnalyzing}
-                    className="px-6 py-3 bg-gradient-to-r from-gold-500 to-amber-500 hover:from-gold-400 hover:to-amber-400 text-navy-950 font-black text-sm rounded-2xl shadow-2xl flex items-center gap-2 transition-transform active:scale-95 disabled:opacity-50"
-                  >
-                    <Camera className="w-5 h-5" />
-                    Capture Snapshot & Predict Form
-                  </button>
-                </div>
+                {canControl && (
+                  <div className="absolute bottom-4 inset-x-0 flex justify-center z-20">
+                    <button
+                      onClick={captureCameraSnapshot}
+                      disabled={isAnalyzing}
+                      className="px-6 py-3 bg-gradient-to-r from-gold-500 to-amber-500 hover:from-gold-400 hover:to-amber-400 text-navy-950 font-black text-sm rounded-2xl shadow-2xl flex items-center gap-2 transition-transform active:scale-95 disabled:opacity-50"
+                    >
+                      <Camera className="w-5 h-5" />
+                      Capture Snapshot & Predict Form
+                    </button>
+                  </div>
+                )}
               </>
             ) : (
               <div className="text-center p-8 space-y-3">
@@ -561,12 +579,14 @@ export default function ArcherPostureImageSection({
                 <span className="text-sm font-bold text-slate-400 block">
                   Camera stream offline
                 </span>
-                <button
-                  onClick={() => startCamera()}
-                  className="px-4 py-2 bg-navy-800 hover:bg-navy-700 border border-navy-700 rounded-xl text-xs font-bold text-slate-200"
-                >
-                  Start Camera Feed
-                </button>
+                {canControl && (
+                  <button
+                    onClick={() => startCamera()}
+                    className="px-4 py-2 bg-navy-800 hover:bg-navy-700 border border-navy-700 rounded-xl text-xs font-bold text-slate-200"
+                  >
+                    Start Camera Feed
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -1045,14 +1065,16 @@ export default function ArcherPostureImageSection({
                 </div>
               </div>
 
-              {/* Save Record Action */}
-              <button
-                onClick={handleSaveRecord}
-                className="w-full mt-4 py-2.5 bg-navy-950 hover:bg-navy-800 border border-gold-500/40 hover:border-gold-500 text-gold-300 hover:text-gold-200 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-md active:scale-95"
-              >
-                <Award className="w-4 h-4 text-gold-400" />
-                Record Evaluation to {selectedLane?.archer.name || 'Archer Profile'}
-              </button>
+              {/* Save Record Action (Admin & Scorer only) */}
+              {canControl && (
+                <button
+                  onClick={handleSaveRecord}
+                  className="w-full mt-4 py-2.5 bg-navy-950 hover:bg-navy-800 border border-gold-500/40 hover:border-gold-500 text-gold-300 hover:text-gold-200 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-md active:scale-95"
+                >
+                  <Award className="w-4 h-4 text-gold-400" />
+                  Record Evaluation to {selectedLane?.archer.name || 'Archer Profile'}
+                </button>
+              )}
             </div>
           </div>
         </div>

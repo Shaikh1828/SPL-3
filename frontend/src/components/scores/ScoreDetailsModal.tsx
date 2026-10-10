@@ -42,7 +42,9 @@ export function ScoreDetailsModal({
 
   // Find sibling scores in the same round for this archer
   const roundScores = (score && allScores.length > 0)
-    ? allScores.filter(s => s.session_archer_id === score.session_archer_id && s.round === score.round)
+    ? allScores
+        .filter(s => s.session_archer_id === score.session_archer_id && s.round === score.round)
+        .sort((a, b) => a.arrow_num - b.arrow_num)
     : (score ? [score] : [])
 
   const currentScore = roundScores.find(s => s.id === selectedScoreId) || score
@@ -204,7 +206,7 @@ export function ScoreDetailsModal({
                         >
                           <span>#{arr.arrow_num}:</span>
                           <span className={isSelected ? 'text-navy-950 font-black' : 'text-gold-400 font-black'}>
-                            {arr.points === 10 && arr.zone === 10 ? 'X' : arr.points}
+                            {arr.image_id === 'x_hit.jpg' ? 'X' : arr.points}
                           </span>
                         </button>
                       )

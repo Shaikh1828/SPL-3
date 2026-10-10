@@ -1,8 +1,18 @@
 """
-Seed data script for comprehensive database initialization & concurrent tournament testing.
+Seed data script for comprehensive database initialization & realistic tournament progression testing.
 
-Populates database with concurrent tournaments, multi-round sessions, realistic archers across lanes,
-cameras, and scored arrow impacts with full total calculation and validation.
+Populates database with:
+1. Multi-role user accounts (admin, scorer, spectator, archers)
+2. 24+ world-class and national archers with realistic profiles
+3. 6 complete tournaments (Ongoing, Completed, Upcoming)
+4. Multi-stage elimination brackets:
+   - Stage 1: Qualification / Preliminary (16 archers)
+   - Stage 2: Quarter-Finals (Top 8 advance, 8 eliminated)
+   - Stage 3: Semi-Finals (Top 4 advance, 4 eliminated)
+   - Stage 4: Medal Finals (Gold & Bronze matches)
+5. Realistic arrow scores (10-X, 10, 9, 8, 7) reflecting Olympic-tier skill distributions
+6. Realistic fatigue curves across ends (fresh -> peak -> fatigue dip -> final adrenaline push)
+7. Full lane camera assignments & AI telemetry metadata
 
 Usage:
     python -m scripts.seed_data
@@ -25,58 +35,66 @@ import structlog
 logger = structlog.get_logger()
 
 
+# Master Competitor Registry (24 Elite & National Archers with specific skill profiles)
+ARCHERS_REGISTRY = [
+    {"id": 101, "username": "kim_woojin", "name": "Kim Woo-jin", "country": "KOR", "tier": "god", "email": "kim.woojin@archeryscore.com"},
+    {"id": 102, "username": "brady_ellison", "name": "Brady Ellison", "country": "USA", "tier": "god", "email": "brady.ellison@archeryscore.com"},
+    {"id": 103, "username": "lim_sihyeon", "name": "Lim Si-hyeon", "country": "KOR", "tier": "god", "email": "lim.sihyeon@archeryscore.com"},
+    {"id": 104, "username": "mete_gazoz", "name": "Mete Gazoz", "country": "TUR", "tier": "elite", "email": "mete.gazoz@archeryscore.com"},
+    {"id": 105, "username": "marcus_dalmeida", "name": "Marcus D'Almeida", "country": "BRA", "tier": "elite", "email": "marcus.dalmeida@archeryscore.com"},
+    {"id": 106, "username": "an_san", "name": "An San", "country": "KOR", "tier": "elite", "email": "an.san@archeryscore.com"},
+    {"id": 107, "username": "casey_kaufhold", "name": "Casey Kaufhold", "country": "USA", "tier": "elite", "email": "casey.kaufhold@archeryscore.com"},
+    {"id": 108, "username": "florian_unruh", "name": "Florian Unruh", "country": "GER", "tier": "elite", "email": "florian.unruh@archeryscore.com"},
+    {"id": 109, "username": "ruman_shana", "name": "Md Ruman Shana", "country": "BAN", "tier": "pro", "email": "ruman.shana@archeryscore.com"},
+    {"id": 110, "username": "sagor_islam", "name": "Md Sagor Islam", "country": "BAN", "tier": "pro", "email": "sagor.islam@archeryscore.com"},
+    {"id": 111, "username": "deepika_kumari", "name": "Deepika Kumari", "country": "IND", "tier": "pro", "email": "deepika.kumari@archeryscore.com"},
+    {"id": 112, "username": "zheng_yichai", "name": "Zheng Yichai", "country": "CHN", "tier": "pro", "email": "zheng.yichai@archeryscore.com"},
+    {"id": 113, "username": "mauro_nespoli", "name": "Mauro Nespoli", "country": "ITA", "tier": "pro", "email": "mauro.nespoli@archeryscore.com"},
+    {"id": 114, "username": "thomas_chirault", "name": "Thomas Chirault", "country": "FRA", "tier": "pro", "email": "thomas.chirault@archeryscore.com"},
+    {"id": 115, "username": "baptiste_addis", "name": "Baptiste Addis", "country": "FRA", "tier": "pro", "email": "baptiste.addis@archeryscore.com"},
+    {"id": 116, "username": "tang_chihchun", "name": "Tang Chih-Chun", "country": "TPE", "tier": "pro", "email": "tang.chihchun@archeryscore.com"},
+    {"id": 117, "username": "zahid_hasan", "name": "Zahid Hasan", "country": "BAN", "tier": "national", "email": "zahid.hasan@archeryscore.com"},
+    {"id": 118, "username": "nasrin_akter", "name": "Nasrin Akter", "country": "BAN", "tier": "national", "email": "nasrin.akter@archeryscore.com"},
+    {"id": 119, "username": "atanu_das", "name": "Atanu Das", "country": "IND", "tier": "national", "email": "atanu.das@archeryscore.com"},
+    {"id": 120, "username": "steve_wijler", "name": "Steve Wijler", "country": "NED", "tier": "national", "email": "steve.wijler@archeryscore.com"},
+    {"id": 121, "username": "takaharu_furukawa", "name": "Takaharu Furukawa", "country": "JPN", "tier": "national", "email": "takaharu.furukawa@archeryscore.com"},
+    {"id": 122, "username": "alejandra_valencia", "name": "Alejandra Valencia", "country": "MEX", "tier": "national", "email": "alejandra.valencia@archeryscore.com"},
+    {"id": 123, "username": "jack_williams", "name": "Jack Williams", "country": "USA", "tier": "national", "email": "jack.williams@archeryscore.com"},
+    {"id": 124, "username": "jane_doe", "name": "Jane Doe", "country": "GBR", "tier": "club", "email": "jane.doe@archeryscore.com"},
+]
+
+
 def seed_users(db: Session):
-    """Create seed users across all roles."""
+    """Create system role accounts and archer competitor profiles."""
     logger.info("seeding_users")
 
-    users = [
-        User(
-            username="admin",
-            email="admin@archeryscore.com",
-            password_hash=hash_password("admin123!"),
-            role="admin",
-            is_active=True,
-        ),
-        User(
-            username="scorer",
-            email="scorer@archeryscore.com",
-            password_hash=hash_password("scorer123!"),
-            role="scorer",
-            is_active=True,
-        ),
-        User(
-            username="scorer2",
-            email="scorer2@archeryscore.com",
-            password_hash=hash_password("scorer123!"),
-            role="scorer",
-            is_active=True,
-        ),
-        User(
-            username="spectator1",
-            email="spectator1@archeryscore.com",
-            password_hash=hash_password("spectator123!"),
-            role="spectator",
-            is_active=True,
-        ),
-        # International & Club Competitor Users
-        User(username="brady_ellison", email="brady@archeryscore.com", password_hash=hash_password("Archer123!"), role="archer", is_active=True),
-        User(username="kim_woojin", email="kim@archeryscore.com", password_hash=hash_password("Archer123!"), role="archer", is_active=True),
-        User(username="mete_gazoz", email="mete@archeryscore.com", password_hash=hash_password("Archer123!"), role="archer", is_active=True),
-        User(username="marcus_dalmeida", email="marcus@archeryscore.com", password_hash=hash_password("Archer123!"), role="archer", is_active=True),
-        User(username="deepika_kumari", email="deepika@archeryscore.com", password_hash=hash_password("Archer123!"), role="archer", is_active=True),
-        User(username="an_san", email="ansan@archeryscore.com", password_hash=hash_password("Archer123!"), role="archer", is_active=True),
-        User(username="john_smith", email="john@archeryscore.com", password_hash=hash_password("Archer123!"), role="archer", is_active=True),
-        User(username="jane_doe", email="jane@archeryscore.com", password_hash=hash_password("Archer123!"), role="archer", is_active=True),
+    system_users = [
+        User(username="admin", email="admin@archeryscore.com", password_hash=hash_password("admin123!"), role="admin", is_active=True),
+        User(username="scorer", email="scorer@archeryscore.com", password_hash=hash_password("scorer123!"), role="scorer", is_active=True),
+        User(username="scorer2", email="scorer2@archeryscore.com", password_hash=hash_password("scorer123!"), role="scorer", is_active=True),
+        User(username="spectator1", email="spectator1@archeryscore.com", password_hash=hash_password("Spectator123!"), role="spectator", is_active=True),
     ]
 
+    all_users = list(system_users)
+    for a in ARCHERS_REGISTRY:
+        all_users.append(
+            User(
+                username=a["username"],
+                email=a["email"],
+                password_hash=hash_password("Archer123!"),
+                role="archer",
+                is_active=True,
+            )
+        )
+
     db_users = []
-    for user in users:
-        existing = db.query(User).filter(User.username == user.username).first()
+    for u in all_users:
+        existing = db.query(User).filter(User.username == u.username).first()
         if not existing:
-            db.add(user)
+            db.add(u)
             db.commit()
-            db.refresh(user)
-            db_users.append(user)
+            db.refresh(u)
+            db_users.append(u)
         else:
             db_users.append(existing)
 
@@ -84,204 +102,368 @@ def seed_users(db: Session):
     return db_users
 
 
-def seed_tournaments(db: Session, admin_user: User):
-    """Create realistic ongoing, completed, and upcoming tournaments."""
-    logger.info("seeding_tournaments")
+def generate_arrow_score(tier: str, end_num: int, arrow_num: int) -> tuple[int, bool, float]:
+    """
+    Generate realistic arrow score and AI confidence based on tier and end fatigue.
+    
+    End Fatigue Curve:
+      - End 1: Normal baseline
+      - End 2: Peak focus
+      - End 3: High focus
+      - End 4: Fatigue dip (fatigue effects onset)
+      - End 5: Final adrenaline surge
+    """
+    fatigue_delta = {
+        1: 0.00,
+        2: 0.08,   # Peak
+        3: 0.03,   # Sustained
+        4: -0.10,  # Fatigue dip
+        5: 0.05,   # Adrenaline push
+    }.get(end_num, 0.0)
 
+    roll = random.random() + fatigue_delta
+
+    if tier == "god":  # ~9.75 average (Kim Woo-jin, Brady Ellison, Lim Si-hyeon)
+        if roll > 0.32:
+            points = 10
+            is_x = random.random() > 0.40
+        elif roll > 0.06:
+            points = 9
+            is_x = False
+        elif roll > 0.01:
+            points = 8
+            is_x = False
+        else:
+            points = 7
+            is_x = False
+    elif tier == "elite":  # ~9.45 average (Mete Gazoz, Marcus D'Almeida, An San, Casey Kaufhold)
+        if roll > 0.42:
+            points = 10
+            is_x = random.random() > 0.50
+        elif roll > 0.12:
+            points = 9
+            is_x = False
+        elif roll > 0.03:
+            points = 8
+            is_x = False
+        else:
+            points = 7
+            is_x = False
+    elif tier == "pro":  # ~9.10 average (Ruman Shana, Sagor Islam, Deepika Kumari)
+        if roll > 0.52:
+            points = 10
+            is_x = random.random() > 0.60
+        elif roll > 0.20:
+            points = 9
+            is_x = False
+        elif roll > 0.06:
+            points = 8
+            is_x = False
+        elif roll > 0.01:
+            points = 7
+            is_x = False
+        else:
+            points = 6
+            is_x = False
+    else:  # National / Club (~8.50 average)
+        if roll > 0.62:
+            points = 10
+            is_x = random.random() > 0.70
+        elif roll > 0.30:
+            points = 9
+            is_x = False
+        elif roll > 0.12:
+            points = 8
+            is_x = False
+        elif roll > 0.04:
+            points = 7
+            is_x = False
+        elif roll > 0.01:
+            points = 6
+            is_x = False
+        else:
+            points = 5
+            is_x = False
+
+    confidence = round(random.uniform(0.94, 0.995), 3)
+    return points, is_x, confidence
+
+
+def seed_database(db: Session, admin_user: User):
+    """
+    Seed multiple realistic tournaments with full multi-stage elimination brackets.
+    """
+    logger.info("seeding_tournaments_and_elimination_brackets")
     now = datetime.utcnow()
-    tournaments_data = [
-        # --- ONGOING TOURNAMENTS WITH ELIMINATION STAGES ---
+
+    # Clear old score, session_archer, session, and tournament records cleanly
+    db.query(CameraLaneAssignment).delete()
+    db.query(Score).delete()
+    db.query(SessionArcher).delete()
+    db.query(TournamentSession).delete()
+    db.query(Tournament).delete()
+    db.commit()
+
+    # Build Map of username/name to User object
+    users_by_username = {u.username: u for u in db.query(User).all()}
+
+    # Definition of 5 Distinct Tournaments
+    tournament_configs = [
+        # 1. Summer Regional Qualifier 2026 (ONGOING)
         {
-            "name": "National Outdoor Archery Championship 2026",
-            "location": "National Sports Stadium Range, Dhaka",
-            "description": "Premiere 70m national outdoor archery championship featuring 12-archer qualification, semi-finals cut, and medal finals.",
-            "start_date": now - timedelta(days=1),
-            "end_date": now + timedelta(days=3),
-            "sessions": [
-                {"name": "Session 1 - Recurve Men & Women 720 Qualification", "round_number": 1, "num_lanes": 12, "arrows_per_round": 6, "status": "completed"},
-                {"name": "Session 2 - 1/4 & Semi-Final Elimination", "round_number": 2, "num_lanes": 6, "arrows_per_round": 6, "status": "completed"},
-                {"name": "Session 3 - Gold & Bronze Medal Finals", "round_number": 3, "num_lanes": 4, "arrows_per_round": 6, "status": "active"},
-            ],
-        },
-        {
-            "name": "Asia Cup Archery Stage 2 - 2026",
-            "location": "BKSP Archery Ground, Savar",
-            "description": "Continental stage-2 tournament with 12 international competitors and multi-camera elimination brackets.",
-            "start_date": now - timedelta(hours=18),
+            "name": "Summer Regional Qualifier 2026",
+            "location": "National Archery Arena, Dhaka",
+            "description": "Premiere world ranking tournament featuring 16 international champions progressing through 1/4 finals, semi-finals, and live medal shootouts.",
+            "start_date": now - timedelta(days=2),
             "end_date": now + timedelta(days=2),
-            "sessions": [
-                {"name": "Session 1 - Qualification 70m", "round_number": 1, "num_lanes": 12, "arrows_per_round": 6, "status": "completed"},
-                {"name": "Session 2 - 1/8 & Semi-Finals Elimination", "round_number": 2, "num_lanes": 6, "arrows_per_round": 6, "status": "active"},
+            "stages": [
+                {
+                    "name": "Qualification Round 720 (16 Archers)",
+                    "round_number": 1,
+                    "num_lanes": 16,
+                    "arrows_per_round": 6,
+                    "ends_to_shoot": 5,
+                    "status": "completed",
+                    "archers_count": 16,  # 16 start
+                },
+                {
+                    "name": "Quarter-Finals 1/4 Elimination (Top 8)",
+                    "round_number": 2,
+                    "num_lanes": 8,
+                    "arrows_per_round": 6,
+                    "ends_to_shoot": 4,
+                    "status": "completed",
+                    "archers_count": 8,   # Top 8 advance (8 eliminated)
+                },
+                {
+                    "name": "Semi-Finals Elimination (Top 4)",
+                    "round_number": 3,
+                    "num_lanes": 4,
+                    "arrows_per_round": 6,
+                    "ends_to_shoot": 4,
+                    "status": "completed",
+                    "archers_count": 4,   # Top 4 advance (4 eliminated)
+                },
+                {
+                    "name": "Gold & Bronze Medal Finals (Live Match)",
+                    "round_number": 4,
+                    "num_lanes": 4,
+                    "arrows_per_round": 6,
+                    "ends_to_shoot": 3,   # Live ongoing (3 ends completed out of 5)
+                    "status": "active",
+                    "archers_count": 4,   # Top 4 shoot medal match
+                },
             ],
         },
-        # --- COMPLETED TOURNAMENTS ---
+        # 2. World Archery Championship 2026 (COMPLETED)
         {
-            "name": "Bangladesh Independence Cup 2026",
-            "location": "Army Stadium Archery Arena, Dhaka",
-            "description": "Annual Independence Day Invitational. Completed 3-stage championship with qualification cut and medal ceremony.",
-            "start_date": now - timedelta(days=14),
-            "end_date": now - timedelta(days=10),
-            "sessions": [
-                {"name": "Stage 1 - Qualification 720", "round_number": 1, "num_lanes": 12, "arrows_per_round": 6, "status": "completed"},
-                {"name": "Stage 2 - Semi-Finals Elimination", "round_number": 2, "num_lanes": 6, "arrows_per_round": 6, "status": "completed"},
-                {"name": "Stage 3 - Gold Medal Finals", "round_number": 3, "num_lanes": 4, "arrows_per_round": 6, "status": "completed"},
+            "name": "World Archery Championship 2026",
+            "location": "Olympic Training Range, Savar",
+            "description": "World Championship premier stage with 16 elite archers.",
+            "start_date": now - timedelta(days=8),
+            "end_date": now - timedelta(days=5),
+            "stages": [
+                {
+                    "name": "Recurve 720 Qualification",
+                    "round_number": 1,
+                    "num_lanes": 16,
+                    "arrows_per_round": 6,
+                    "ends_to_shoot": 5,
+                    "status": "completed",
+                    "archers_count": 16,
+                },
+                {
+                    "name": "Championship Finals",
+                    "round_number": 2,
+                    "num_lanes": 4,
+                    "arrows_per_round": 6,
+                    "ends_to_shoot": 5,
+                    "status": "completed",
+                    "archers_count": 4,
+                },
             ],
         },
+        # 2. Asia Cup Archery Grand Prix 2026 (COMPLETED)
         {
-            "name": "Teer 14th National Archery Championship",
+            "name": "Asia Cup Archery Grand Prix 2026",
+            "location": "BKSP Archery Ground, Savar",
+            "description": "Continental Grand Prix with 16 elite Asian and international archers. Fully completed multi-stage bracket.",
+            "start_date": now - timedelta(days=15),
+            "end_date": now - timedelta(days=12),
+            "stages": [
+                {
+                    "name": "Stage 1 - Recurve 70m Qualification (16 Archers)",
+                    "round_number": 1,
+                    "num_lanes": 16,
+                    "arrows_per_round": 6,
+                    "ends_to_shoot": 5,
+                    "status": "completed",
+                    "archers_count": 16,
+                },
+                {
+                    "name": "Stage 2 - Quarter-Finals Bracket (Top 8)",
+                    "round_number": 2,
+                    "num_lanes": 8,
+                    "arrows_per_round": 6,
+                    "ends_to_shoot": 4,
+                    "status": "completed",
+                    "archers_count": 8,
+                },
+                {
+                    "name": "Stage 3 - Semi-Finals Cut (Top 4)",
+                    "round_number": 3,
+                    "num_lanes": 4,
+                    "arrows_per_round": 6,
+                    "ends_to_shoot": 4,
+                    "status": "completed",
+                    "archers_count": 4,
+                },
+                {
+                    "name": "Stage 4 - Gold & Bronze Medal Shootout",
+                    "round_number": 4,
+                    "num_lanes": 4,
+                    "arrows_per_round": 6,
+                    "ends_to_shoot": 5,
+                    "status": "completed",
+                    "archers_count": 4,
+                },
+            ],
+        },
+        # 3. Bangladesh National Outdoor Championship 2026 (COMPLETED)
+        {
+            "name": "Bangladesh National Outdoor Championship 2026",
             "location": "Shaheed Ahsan Ullah Master Stadium, Tongi",
-            "description": "Historic national championship crowned with national team records in 70m individual recurve.",
-            "start_date": now - timedelta(days=32),
-            "end_date": now - timedelta(days=28),
-            "sessions": [
-                {"name": "Session 1 - Championship Qualification 720", "round_number": 1, "num_lanes": 12, "arrows_per_round": 6, "status": "completed"},
-                {"name": "Session 2 - Medal Match Finals", "round_number": 2, "num_lanes": 4, "arrows_per_round": 6, "status": "completed"},
+            "description": "Annual National Archery Championship with 12 national team competitors advancing to championship finals.",
+            "start_date": now - timedelta(days=35),
+            "end_date": now - timedelta(days=32),
+            "stages": [
+                {
+                    "name": "National Qualification 720 (12 Archers)",
+                    "round_number": 1,
+                    "num_lanes": 12,
+                    "arrows_per_round": 6,
+                    "ends_to_shoot": 5,
+                    "status": "completed",
+                    "archers_count": 12,
+                },
+                {
+                    "name": "Championship Semi-Finals (Top 4)",
+                    "round_number": 2,
+                    "num_lanes": 4,
+                    "arrows_per_round": 6,
+                    "ends_to_shoot": 4,
+                    "status": "completed",
+                    "archers_count": 4,
+                },
+                {
+                    "name": "National Gold Medal Final",
+                    "round_number": 3,
+                    "num_lanes": 2,
+                    "arrows_per_round": 6,
+                    "ends_to_shoot": 5,
+                    "status": "completed",
+                    "archers_count": 2,
+                },
             ],
         },
+        # 4. Winter Indoor Invitational Grand Prix 2025 (COMPLETED)
         {
-            "name": "Winter Invitational Grand Prix 2025",
+            "name": "Winter Indoor Invitational Grand Prix 2025",
             "location": "Sylhet International Sports Range",
-            "description": "International winter open tournament. Fully concluded with official records archived.",
+            "description": "18m Indoor international open tournament with precision spot target scoring.",
             "start_date": now - timedelta(days=90),
-            "end_date": now - timedelta(days=86),
-            "sessions": [
-                {"name": "All-Stars Final Round", "round_number": 1, "num_lanes": 6, "arrows_per_round": 6, "status": "completed"},
+            "end_date": now - timedelta(days=87),
+            "stages": [
+                {
+                    "name": "18m Indoor Ranking Round (12 Archers)",
+                    "round_number": 1,
+                    "num_lanes": 12,
+                    "arrows_per_round": 6,
+                    "ends_to_shoot": 5,
+                    "status": "completed",
+                    "archers_count": 12,
+                },
+                {
+                    "name": "Indoor Medal Match Finals (Top 4)",
+                    "round_number": 2,
+                    "num_lanes": 4,
+                    "arrows_per_round": 6,
+                    "ends_to_shoot": 5,
+                    "status": "completed",
+                    "archers_count": 4,
+                },
             ],
         },
-        # --- UPCOMING TOURNAMENTS ---
+        # 5. Olympic Selection Trials 2026 (UPCOMING / PAUSED)
         {
-            "name": "Asian Archery Grand Prix 2026",
-            "location": "Chittagong Port Sports Complex",
-            "description": "Upcoming international major tournament scheduled next month with 16 nations participating.",
-            "start_date": now + timedelta(days=12),
-            "end_date": now + timedelta(days=16),
-            "sessions": [
-                {"name": "Preliminary Round A", "round_number": 1, "num_lanes": 6, "arrows_per_round": 6, "status": "paused"},
-            ],
-        },
-        {
-            "name": "Inter-University Archery Meet 2026",
-            "location": "University Physical Education Field",
-            "description": "National collegiate archery championship scheduled for next semester.",
-            "start_date": now + timedelta(days=25),
-            "end_date": now + timedelta(days=28),
-            "sessions": [
-                {"name": "Collegiate Qualification", "round_number": 1, "num_lanes": 6, "arrows_per_round": 6, "status": "paused"},
+            "name": "Olympic Selection Trials 2026",
+            "location": "National Sports Complex Arena, Mirpur",
+            "description": "Upcoming national Olympic selection trials featuring 16 registered recurve archers.",
+            "start_date": now + timedelta(days=14),
+            "end_date": now + timedelta(days=18),
+            "stages": [
+                {
+                    "name": "Trial Stage 1 - 70m Ranking",
+                    "round_number": 1,
+                    "num_lanes": 16,
+                    "arrows_per_round": 6,
+                    "ends_to_shoot": 0,
+                    "status": "paused",
+                    "archers_count": 16,
+                },
             ],
         },
     ]
 
-    tournaments = []
-    sessions_to_create = []
+    total_scores_count = 0
+    total_archers_registered = 0
+    all_seeded_sessions = []
 
-    for t_data in tournaments_data:
-        existing = db.query(Tournament).filter(Tournament.name == t_data["name"]).first()
-        if not existing:
-            t = Tournament(
-                name=t_data["name"],
-                location=t_data["location"],
-                description=t_data["description"],
-                start_date=t_data["start_date"],
-                end_date=t_data["end_date"],
-                created_by_user_id=admin_user.id,
+    for t_conf in tournament_configs:
+        tourney = Tournament(
+            name=t_conf["name"],
+            location=t_conf["location"],
+            description=t_conf["description"],
+            start_date=t_conf["start_date"],
+            end_date=t_conf["end_date"],
+            created_by_user_id=admin_user.id,
+        )
+        db.add(tourney)
+        db.commit()
+        db.refresh(tourney)
+
+        # Track surviving archers round by round
+        current_qualified_archers = ARCHERS_REGISTRY[:16]
+
+        for stage_conf in t_conf["stages"]:
+            sess = TournamentSession(
+                tournament_id=tourney.id,
+                name=stage_conf["name"],
+                round_number=stage_conf["round_number"],
+                num_lanes=stage_conf["num_lanes"],
+                arrows_per_round=stage_conf["arrows_per_round"],
+                status=stage_conf["status"],
+                start_time=t_conf["start_date"] if stage_conf["status"] in ["active", "completed"] else None,
+                end_time=t_conf["end_date"] if stage_conf["status"] == "completed" else None,
             )
-            db.add(t)
+            db.add(sess)
             db.commit()
-            db.refresh(t)
-            tournaments.append(t)
-            t_obj = t
-        else:
-            existing.location = t_data["location"]
-            existing.description = t_data["description"]
-            existing.start_date = t_data["start_date"]
-            existing.end_date = t_data["end_date"]
-            db.commit()
-            tournaments.append(existing)
-            t_obj = existing
+            db.refresh(sess)
+            all_seeded_sessions.append(sess)
 
-        # Create tournament-specific sessions
-        for s_template in t_data.get("sessions", []):
-            existing_sess = db.query(TournamentSession).filter(
-                TournamentSession.tournament_id == t_obj.id,
-                TournamentSession.name == s_template["name"],
-            ).first()
+            archers_for_this_stage = current_qualified_archers[:stage_conf["archers_count"]]
+            stage_results = []
 
-            if not existing_sess:
-                sess = TournamentSession(
-                    tournament_id=t_obj.id,
-                    name=s_template["name"],
-                    round_number=s_template["round_number"],
-                    num_lanes=s_template["num_lanes"],
-                    arrows_per_round=s_template["arrows_per_round"],
-                    status=s_template["status"],
-                    start_time=t_data["start_date"] if s_template["status"] in ["active", "completed"] else None,
-                    end_time=t_data["end_date"] if s_template["status"] == "completed" else None,
-                )
-                db.add(sess)
-                db.commit()
-                db.refresh(sess)
-                sessions_to_create.append(sess)
-            else:
-                existing_sess.status = s_template["status"]
-                existing_sess.round_number = s_template["round_number"]
-                existing_sess.num_lanes = s_template["num_lanes"]
-                db.commit()
-                sessions_to_create.append(existing_sess)
+            # Register Session Archers and shoot arrows
+            for lane_idx, archer_data in enumerate(archers_for_this_stage):
+                lane_num = lane_idx + 1
+                user_obj = users_by_username.get(archer_data["username"])
+                user_id = user_obj.id if user_obj else archer_data["id"]
 
-    logger.info("tournaments_seeded", count=len(tournaments))
-    return tournaments, sessions_to_create
-
-
-def seed_session_archers(db: Session, sessions: list):
-    """Register archers across elimination tiers for every session."""
-    logger.info("seeding_session_archers")
-
-    # 12-Archer Roster
-    all_competitors = [
-        (1, "Brady Ellison"),
-        (2, "Mete Gazoz"),
-        (3, "Kim Woo-jin"),
-        (4, "Marcus D'Almeida"),
-        (5, "Deepika Kumari"),
-        (6, "An San"),
-        (7, "Ruman Shana"),
-        (8, "Casey Kaufhold"),
-        (9, "Md Sagor Islam"),
-        (10, "Zahid Hasan"),
-        (11, "Nasrin Akter"),
-        (12, "Atanu Das"),
-    ]
-
-    # Qualified tiers
-    tier_semi_finalists = [all_competitors[0], all_competitors[2], all_competitors[5], all_competitors[1], all_competitors[3], all_competitors[4]]
-    tier_finalists = [all_competitors[0], all_competitors[2], all_competitors[5], all_competitors[1]]
-
-    session_archers = []
-    for session in sessions:
-        s_name_lower = session.name.lower()
-        
-        # Decide which competitor roster qualifies for this stage
-        if session.round_number == 3 or "finals" in s_name_lower or "gold" in s_name_lower:
-            roster = tier_finalists[:session.num_lanes]
-        elif session.round_number == 2 or "semi" in s_name_lower or "elimination" in s_name_lower or "1/4" in s_name_lower:
-            roster = tier_semi_finalists[:session.num_lanes]
-        else:
-            # Qualification round
-            roster = all_competitors[:session.num_lanes]
-
-        for lane_idx, (user_id, archer_name) in enumerate(roster):
-            lane_num = lane_idx + 1
-
-            existing = db.query(SessionArcher).filter(
-                SessionArcher.session_id == session.id,
-                SessionArcher.archer_id == user_id,
-            ).first()
-
-            if not existing:
                 sa = SessionArcher(
-                    session_id=session.id,
+                    session_id=sess.id,
                     archer_id=user_id,
-                    archer_name=archer_name,
+                    archer_name=archer_data["name"],
                     lane_number=lane_num,
                     current_round=1,
                     total_score=0,
@@ -289,255 +471,139 @@ def seed_session_archers(db: Session, sessions: list):
                 db.add(sa)
                 db.commit()
                 db.refresh(sa)
-                session_archers.append(sa)
-            else:
-                existing.lane_number = lane_num
-                db.commit()
-                session_archers.append(existing)
+                total_archers_registered += 1
 
-    logger.info("session_archers_seeded", count=len(session_archers))
-    return session_archers
+                # Generate arrows if ends_to_shoot > 0
+                accumulated_total = 0
+                tens_count = 0
+                xs_count = 0
+                ends_shot = stage_conf["ends_to_shoot"]
 
+                if ends_shot > 0:
+                    for end_num in range(1, ends_shot + 1):
+                        for arrow_num in range(1, stage_conf["arrows_per_round"] + 1):
+                            pts, is_x, conf = generate_arrow_score(archer_data["tier"], end_num, arrow_num)
+                            if pts == 10:
+                                tens_count += 1
+                            if is_x:
+                                xs_count += 1
 
-def seed_scores(db: Session, session_archers: list):
-    """Seed realistic arrow impacts with zone calculation and total synchronization across 5 ends."""
-    logger.info("seeding_scores")
+                            img_suffix = "x" if is_x else "normal"
+                            score = Score(
+                                session_id=sess.id,
+                                session_archer_id=sa.id,
+                                round=end_num,
+                                arrow_num=arrow_num,
+                                zone=pts,
+                                points=pts,
+                                confidence=conf,
+                                validated_by_ai=True,
+                                image_id=f"target_scan_{sess.id}_{end_num}_{arrow_num}_{img_suffix}.jpg",
+                            )
+                            db.add(score)
+                            accumulated_total += pts
+                            total_scores_count += 1
 
-    scores = []
-    # Seed scores for active sessions across 5 ends (30 arrows per archer)
-    for sa in session_archers:
-        existing_scores = db.query(Score).filter(Score.session_archer_id == sa.id).all()
-        # If already populated with 5 ends (at least 30 arrows), keep or sync
-        if existing_scores and len(existing_scores) >= 30:
-            total_pts = sum(s.points for s in existing_scores)
-            sa.total_score = total_pts
-            sa.current_round = max(s.round for s in existing_scores)
-            db.commit()
-            scores.extend(existing_scores)
-            continue
-        elif existing_scores:
-            # Clear incomplete ends to re-seed 5 full ends
-            for es in existing_scores:
-                db.delete(es)
-            db.commit()
+                    sa.total_score = accumulated_total
+                    sa.current_round = ends_shot
+                    db.commit()
 
-        # Skill profile based on lane number (1 to 6)
-        lane = sa.lane_number or 1
-        total_accumulated = 0
+                stage_results.append({
+                    "archer_data": archer_data,
+                    "total_score": accumulated_total,
+                    "tens_count": tens_count,
+                    "xs_count": xs_count,
+                })
 
-        # Generate realistic scores for 5 ends (6 arrows per end = 30 arrows total)
-        for round_num in range(1, 6):
-            # Fatigue / pacing factor per end (End 1 fresh, End 2 peak, End 3 steady, End 4 fatigue dip, End 5 final push)
-            end_fatigue_bias = {
-                1: 0.0,
-                2: 0.05,   # warming up & peaked
-                3: 0.0,
-                4: -0.06,  # fatigue dip
-                5: 0.02,   # adrenaline finish
-            }.get(round_num, 0.0)
-
-            for arrow_num in range(1, 7):
-                roll = random.random() + end_fatigue_bias
-
-                # Archer specific distribution
-                if lane == 3:  # Kim Woo-jin (world champion level ~9.7 avg)
-                    if roll > 0.35:
-                        points = 10
-                        is_x = random.random() > 0.45
-                    elif roll > 0.08:
-                        points = 9
-                        is_x = False
-                    elif roll > 0.02:
-                        points = 8
-                        is_x = False
-                    else:
-                        points = 7
-                        is_x = False
-                elif lane in (1, 6):  # Brady Ellison / An San (~9.5 avg)
-                    if roll > 0.42:
-                        points = 10
-                        is_x = random.random() > 0.5
-                    elif roll > 0.15:
-                        points = 9
-                        is_x = False
-                    elif roll > 0.05:
-                        points = 8
-                        is_x = False
-                    else:
-                        points = 7
-                        is_x = False
-                elif lane in (2, 4):  # Mete Gazoz / Marcus D'Almeida (~9.2 avg)
-                    if roll > 0.50:
-                        points = 10
-                        is_x = random.random() > 0.6
-                    elif roll > 0.22:
-                        points = 9
-                        is_x = False
-                    elif roll > 0.08:
-                        points = 8
-                        is_x = False
-                    elif roll > 0.03:
-                        points = 7
-                        is_x = False
-                    else:
-                        points = 6
-                        is_x = False
-                else:  # Deepika Kumari & others (~8.9 avg, wider histogram spread)
-                    if roll > 0.55:
-                        points = 10
-                        is_x = random.random() > 0.65
-                    elif roll > 0.28:
-                        points = 9
-                        is_x = False
-                    elif roll > 0.12:
-                        points = 8
-                        is_x = False
-                    elif roll > 0.05:
-                        points = 7
-                        is_x = False
-                    elif roll > 0.02:
-                        points = 6
-                        is_x = False
-                    else:
-                        points = 5
-                        is_x = False
-
-                zone = points
-                img_suffix = "x" if is_x else "normal"
-                score = Score(
-                    session_id=sa.session_id,
-                    session_archer_id=sa.id,
-                    round=round_num,
-                    arrow_num=arrow_num,
-                    zone=zone,
-                    points=points,
-                    confidence=round(random.uniform(0.93, 0.99), 3),
-                    validated_by_ai=True,
-                    image_id=f"target_scan_{sa.session_id}_{round_num}_{arrow_num}_{img_suffix}.jpg",
-                )
-                db.add(score)
-                scores.append(score)
-                total_accumulated += points
-
-        sa.total_score = total_accumulated
-        sa.current_round = 5
-        db.commit()
+            # Sort archers by score to determine who advances to the next elimination stage
+            stage_results.sort(key=lambda x: (-x["total_score"], -x["tens_count"], -x["xs_count"]))
+            current_qualified_archers = [item["archer_data"] for item in stage_results]
 
     db.commit()
-    logger.info("scores_seeded", count=len(scores))
-    return scores
+    logger.info("database_seeded_successfully", total_scores=total_scores_count, total_archers=total_archers_registered)
+    return all_seeded_sessions
 
 
-def seed_cameras(db: Session):
-    """Create 6 RTSP/USB camera targets for lane vision."""
-    logger.info("seeding_cameras")
+def seed_cameras_and_assignments(db: Session, sessions: list):
+    """Seed camera hardware and map active lanes."""
+    logger.info("seeding_cameras_and_assignments")
 
-    cameras = [
-        Camera(name="Target Lane 1 Cam", camera_type="RTSP", url="rtsp://camera1.local:554/live/target1", status="connected"),
-        Camera(name="Target Lane 2 Cam", camera_type="RTSP", url="rtsp://camera2.local:554/live/target2", status="connected"),
-        Camera(name="Target Lane 3 Cam", camera_type="RTSP", url="rtsp://camera3.local:554/live/target3", status="connected"),
-        Camera(name="Target Lane 4 Cam", camera_type="RTSP", url="rtsp://camera4.local:554/live/target4", status="connected"),
-        Camera(name="Target Lane 5 Cam", camera_type="RTSP", url="rtsp://camera5.local:554/live/target5", status="connected"),
-        Camera(name="Target Lane 6 Cam", camera_type="USB", url="camera:///dev/video0", status="connected"),
+    cameras_data = [
+        {"name": "Lane 1 Cam (Target A)", "camera_type": "RTSP", "url": "rtsp://cam-lane1.local:554/live"},
+        {"name": "Lane 2 Cam (Target B)", "camera_type": "RTSP", "url": "rtsp://cam-lane2.local:554/live"},
+        {"name": "Lane 3 Cam (Target C)", "camera_type": "RTSP", "url": "rtsp://cam-lane3.local:554/live"},
+        {"name": "Lane 4 Cam (Target D)", "camera_type": "RTSP", "url": "rtsp://cam-lane4.local:554/live"},
+        {"name": "Lane 5 Cam (Target E)", "camera_type": "RTSP", "url": "rtsp://cam-lane5.local:554/live"},
+        {"name": "Lane 6 Cam (Target F)", "camera_type": "RTSP", "url": "rtsp://cam-lane6.local:554/live"},
     ]
 
-    db_cameras = []
-    for cam in cameras:
-        existing = db.query(Camera).filter(Camera.name == cam.name).first()
+    cameras = []
+    for c_data in cameras_data:
+        existing = db.query(Camera).filter(Camera.name == c_data["name"]).first()
         if not existing:
-            db.add(cam)
+            c = Camera(name=c_data["name"], camera_type=c_data["camera_type"], url=c_data["url"], status="connected")
+            db.add(c)
             db.commit()
-            db.refresh(cam)
-            db_cameras.append(cam)
+            db.refresh(c)
+            cameras.append(c)
         else:
-            db_cameras.append(existing)
+            cameras.append(existing)
 
-    logger.info("cameras_seeded", count=len(db_cameras))
-    return db_cameras
-
-
-def seed_camera_assignments(db: Session, sessions: list, cameras: list):
-    """Assign cameras to all lanes for active sessions."""
-    logger.info("seeding_camera_assignments")
-
-    assignments = []
-    for session in sessions:
-        if session.status != "active":
-            continue
-
-        num_lanes = min(session.num_lanes, len(cameras))
-        for lane_idx in range(num_lanes):
-            lane_num = lane_idx + 1
-            camera = cameras[lane_idx]
-
-            existing = db.query(CameraLaneAssignment).filter(
-                CameraLaneAssignment.session_id == session.id,
-                CameraLaneAssignment.lane == lane_num,
-            ).first()
-
-            if not existing:
-                assignment = CameraLaneAssignment(
-                    camera_id=camera.id,
-                    session_id=session.id,
-                    lane=lane_num,
-                )
-                db.add(assignment)
-                assignments.append(assignment)
-
+    # Assign cameras to active sessions
+    assignments_count = 0
+    for s in sessions:
+        if s.status == "active":
+            for lane_idx in range(min(s.num_lanes, len(cameras))):
+                existing_assignment = db.query(CameraLaneAssignment).filter(
+                    CameraLaneAssignment.session_id == s.id,
+                    CameraLaneAssignment.lane == lane_idx + 1,
+                ).first()
+                if not existing_assignment:
+                    assignment = CameraLaneAssignment(
+                        camera_id=cameras[lane_idx].id,
+                        session_id=s.id,
+                        lane=lane_idx + 1,
+                    )
+                    db.add(assignment)
+                    assignments_count += 1
     db.commit()
-    logger.info("camera_assignments_seeded", count=len(assignments))
-    return assignments
+    logger.info("cameras_assigned", count=assignments_count)
 
 
 def main():
-    """Run all seed operations and verify database integrity."""
-    logger.info("seed_data_starting")
+    """Run all seed operations and print validation summary."""
+    print("\n" + "="*65)
+    print("🎯 ARCHERY SCORING SYSTEM — HIGH REALISM DATABASE SEEDER")
+    print("="*65)
     db = SessionLocal()
 
     try:
         users = seed_users(db)
         admin_user = users[0]
 
-        # Clean up obsolete/duplicate test tournaments
-        dummy_tournaments = db.query(Tournament).filter(
-            (Tournament.name.ilike("%E2E Olympic%")) | 
-            (Tournament.name == "Test Tournament") | 
-            (Tournament.name == "Test No Location")
-        ).all()
-        for dt in dummy_tournaments:
-            dt_sessions = db.query(TournamentSession).filter(TournamentSession.tournament_id == dt.id).all()
-            for s in dt_sessions:
-                db.delete(s)
-            db.delete(dt)
-        db.commit()
+        sessions = seed_database(db, admin_user)
+        seed_cameras_and_assignments(db, sessions)
 
-        tournaments, sessions = seed_tournaments(db, admin_user)
-        session_archers = seed_session_archers(db, sessions)
-        scores = seed_scores(db, session_archers)
-        cameras = seed_cameras(db)
-        camera_assignments = seed_camera_assignments(db, sessions, cameras)
+        # Integrity Check
+        total_tourneys = db.query(Tournament).count()
+        total_sessions = db.query(TournamentSession).count()
+        total_archers = db.query(SessionArcher).count()
+        total_scores = db.query(Score).count()
+        total_tens = db.query(Score).filter(Score.points == 10).count()
+        total_nines = db.query(Score).filter(Score.points == 9).count()
 
-        # Integrity check: verify that archer totals match sum of individual score points
-        for sa in session_archers:
-            calc_sum = db.query(func.sum(Score.points)).filter(Score.session_archer_id == sa.id).scalar() or 0
-            if sa.total_score != calc_sum:
-                sa.total_score = calc_sum
-                db.commit()
-
-        print("\n" + "="*60)
-        print("[+] ARCHERY SCORING SYSTEM -- SEED DATA INITIALIZED")
-        print("="*60)
-        print(f"   Users: {len(users)} (Admin: admin / admin123!, Scorer: scorer / scorer123!)")
-        print(f"   Realistic Tournaments: {len(tournaments)}")
-        print(f"   Active & Completed Sessions: {len(sessions)}")
-        print(f"   Registered Archers: {len(session_archers)}")
-        print(f"   Arrow Impact Scores: {len(scores)}")
-        print(f"   Cameras Assigned: {len(camera_assignments)}")
-        print("="*60 + "\n")
+        print(f"\n✅ DATABASE SEEDING COMPLETED SUCCESSFULLY!")
+        print(f"   • Total Tournaments:      {total_tourneys}")
+        print(f"   • Elimination Sessions:   {total_sessions}")
+        print(f"   • Registered Archers:     {total_archers}")
+        print(f"   • Arrow Score Impacts:    {total_scores:,}")
+        print(f"   • Perfect 10s Recorded:   {total_tens:,} ({round((total_tens/total_scores)*100, 1)}%)")
+        print(f"   • Solid 9s Recorded:      {total_nines:,} ({round((total_nines/total_scores)*100, 1)}%)")
+        print("="*65 + "\n")
 
     except Exception as e:
-        logger.exception("seed_data_error", error=str(e))
-        print(f"\n❌ Seed data failed: {e}")
+        logger.exception("seed_failed", error=str(e))
+        print(f"\n❌ Seed failed: {e}")
         sys.exit(1)
     finally:
         db.close()

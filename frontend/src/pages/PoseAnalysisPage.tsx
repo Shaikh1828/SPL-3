@@ -12,6 +12,8 @@ import type {
 } from '@/types'
 import { toast } from 'react-hot-toast'
 import ArcherPostureImageSection from '@/components/pose/ArcherPostureImageSection'
+import { useAuthStore } from '@/store/authStore'
+import { cn } from '@/lib/utils'
 
 // MediaPipe 33 Landmark Connections for Anatomical Skeleton Overlay
 const POSE_CONNECTIONS: [number, number][] = [
@@ -45,6 +47,9 @@ const DEFAULT_POSTURE_ACCURACY: PostureAccuracyData = {
 }
 
 export default function PoseAnalysisPage() {
+  const { user } = useAuthStore()
+  const canControl = user?.role === 'admin' || user?.role === 'scorer'
+
   // ─── Range Lanes & Archers State ──────────────────────────────────────────
   const [lanes, setLanes] = useState<RangeLaneArcherItem[]>([])
   const [selectedLane, setSelectedLane] = useState<RangeLaneArcherItem | null>(null)
@@ -615,6 +620,14 @@ export default function PoseAnalysisPage() {
 
   return (
     <div className="space-y-6 pb-16">
+      {/* Role Alert for Spectators */}
+      {!canControl && (
+        <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-xs flex items-center gap-2.5">
+          <ShieldAlert className="w-4 h-4 shrink-0 text-amber-400" />
+          <span>Spectator Mode: Posture biomechanics, kinematic graphs, and reports are view-only. Form simulation adjustments, video uploads, and assessment recording are disabled.</span>
+        </div>
+      )}
+
       {/* ─── Top Header Ribbon ────────────────────────────────────────────── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-navy-900 border border-navy-700/80 rounded-2xl p-6 shadow-xl relative overflow-hidden">
         <div className="absolute -right-16 -top-16 w-64 h-64 bg-gold-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -703,34 +716,38 @@ export default function PoseAnalysisPage() {
             </button>
           </div>
 
-          {/* Live Webcam Toggle */}
-          <button
-            onClick={isWebcamActive ? stopWebcam : () => startWebcam()}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md ${
-              isWebcamActive
-                ? 'bg-rose-600 hover:bg-rose-500 text-white animate-pulse'
-                : 'bg-navy-800 hover:bg-navy-700 text-slate-200 border border-navy-600'
-            }`}
-          >
-            <CameraIcon className="w-4 h-4 text-emerald-400" />
-            {isWebcamActive ? 'Stop Live Cam' : 'Live Archer Cam'}
-          </button>
+          {/* Live Webcam Toggle (Scorer/Admin only) */}
+          {canControl && (
+            <button
+              onClick={isWebcamActive ? stopWebcam : () => startWebcam()}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md ${
+                isWebcamActive
+                  ? 'bg-rose-600 hover:bg-rose-500 text-white animate-pulse'
+                  : 'bg-navy-800 hover:bg-navy-700 text-slate-200 border border-navy-600'
+              }`}
+            >
+              <CameraIcon className="w-4 h-4 text-emerald-400" />
+              {isWebcamActive ? 'Stop Live Cam' : 'Live Archer Cam'}
+            </button>
+          )}
 
-          <label
-            htmlFor="video-upload"
-            className="flex items-center gap-2 px-3.5 py-2 bg-navy-800 hover:bg-navy-700 text-slate-200 border border-navy-600 rounded-xl text-xs font-bold cursor-pointer transition-all shadow-md active:scale-95"
-          >
-            <Upload className="w-4 h-4 text-gold-400" />
-            Upload Video
-            <input
-              id="video-upload"
-              ref={fileInputRef}
-              type="file"
-              accept="video/*"
-              className="hidden"
-              onChange={handleFileUpload}
-            />
-          </label>
+          {canControl && (
+            <label
+              htmlFor="video-upload"
+              className="flex items-center gap-2 px-3.5 py-2 bg-navy-800 hover:bg-navy-700 text-slate-200 border border-navy-600 rounded-xl text-xs font-bold cursor-pointer transition-all shadow-md active:scale-95"
+            >
+              <Upload className="w-4 h-4 text-gold-400" />
+              Upload Video
+              <input
+                id="video-upload"
+                ref={fileInputRef}
+                type="file"
+                accept="video/*"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+            </label>
+          )}
         </div>
       </div>
 
@@ -1425,27 +1442,29 @@ export default function PoseAnalysisPage() {
                   </div>
                 </div>
 
-                {/* 1-Click Snapshot Assessment Button */}
-                <div className="flex items-center gap-2.5 pt-1">
-                  <button
-                    onClick={handleCaptureSnapshot}
-                    id="capture-posture-snapshot-btn"
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-gold-500 to-amber-500 hover:from-gold-400 hover:to-amber-400 text-navy-950 font-black rounded-xl text-xs shadow-lg shadow-gold-500/20 transition-all active:scale-95"
-                  >
-                    <Zap className="w-4 h-4" /> Capture Posture Snapshot
-                  </button>
-                  <button
-                    onClick={() => setIsLiveContinuousAnalysis(!isLiveContinuousAnalysis)}
-                    title={isLiveContinuousAnalysis ? 'Pause Real-Time Tracking' : 'Resume Real-Time Tracking'}
-                    className={`p-2.5 rounded-xl border transition-all text-xs font-bold flex items-center gap-1.5 ${
-                      isLiveContinuousAnalysis
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                        : 'bg-navy-950 text-slate-400 border-navy-700'
-                    }`}
-                  >
-                    <RefreshCw className={`w-4 h-4 ${isLiveContinuousAnalysis ? 'animate-spin' : ''}`} />
-                  </button>
-                </div>
+                {/* 1-Click Snapshot Assessment Button (Admin & Scorer only) */}
+                {canControl && (
+                  <div className="flex items-center gap-2.5 pt-1">
+                    <button
+                      onClick={handleCaptureSnapshot}
+                      id="capture-posture-snapshot-btn"
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-gold-500 to-amber-500 hover:from-gold-400 hover:to-amber-400 text-navy-950 font-black rounded-xl text-xs shadow-lg shadow-gold-500/20 transition-all active:scale-95"
+                    >
+                      <Zap className="w-4 h-4" /> Capture Posture Snapshot
+                    </button>
+                    <button
+                      onClick={() => setIsLiveContinuousAnalysis(!isLiveContinuousAnalysis)}
+                      title={isLiveContinuousAnalysis ? 'Pause Real-Time Tracking' : 'Resume Real-Time Tracking'}
+                      className={`p-2.5 rounded-xl border transition-all text-xs font-bold flex items-center gap-1.5 ${
+                        isLiveContinuousAnalysis
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : 'bg-navy-950 text-slate-400 border-navy-700'
+                      }`}
+                    >
+                      <RefreshCw className={`w-4 h-4 ${isLiveContinuousAnalysis ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1592,6 +1611,13 @@ export default function PoseAnalysisPage() {
               </p>
             </div>
 
+            {!canControl && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-xs flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 shrink-0 text-amber-400" />
+                <span>Spectator Mode: Simulator is view-only. Angle adjustments and custom predictions are restricted to Scorer & Admin.</span>
+              </div>
+            )}
+
             {/* Presets */}
             <div className="space-y-2">
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
@@ -1599,6 +1625,8 @@ export default function PoseAnalysisPage() {
               </span>
               <div className="grid grid-cols-3 gap-3">
                 <button
+                  data-testid="preset-olympic-gold"
+                  disabled={!canControl}
                   onClick={() => {
                     setSimBowArm(179.2)
                     setSimDrawElbow(139.0)
@@ -1606,13 +1634,18 @@ export default function PoseAnalysisPage() {
                     setSimDeflection(0.3)
                     setSimHoldDuration(2.0)
                   }}
-                  className="p-3 bg-navy-950 hover:bg-navy-800 border border-emerald-500/30 hover:border-emerald-500/60 rounded-xl text-left transition-all group"
+                  className={cn(
+                    "p-3 bg-navy-950 border border-emerald-500/30 rounded-xl text-left transition-all group",
+                    canControl ? "hover:bg-navy-800 hover:border-emerald-500/60 cursor-pointer" : "opacity-60 cursor-not-allowed"
+                  )}
                 >
                   <span className="text-xs font-black text-emerald-400 block">Olympic Gold</span>
                   <span className="text-[11px] text-slate-400 mt-0.5 block">179.2° Bow Arm, 0.4px Tremor</span>
                 </button>
 
                 <button
+                  data-testid="preset-arm-drop"
+                  disabled={!canControl}
                   onClick={() => {
                     setSimBowArm(176.5)
                     setSimDrawElbow(137.0)
@@ -1620,13 +1653,18 @@ export default function PoseAnalysisPage() {
                     setSimDeflection(6.5)
                     setSimHoldDuration(1.7)
                   }}
-                  className="p-3 bg-navy-950 hover:bg-navy-800 border border-amber-500/30 hover:border-amber-500/60 rounded-xl text-left transition-all group"
+                  className={cn(
+                    "p-3 bg-navy-950 border border-amber-500/30 rounded-xl text-left transition-all group",
+                    canControl ? "hover:bg-navy-800 hover:border-amber-500/60 cursor-pointer" : "opacity-60 cursor-not-allowed"
+                  )}
                 >
                   <span className="text-xs font-black text-amber-400 block">Arm Drop Flaw</span>
                   <span className="text-[11px] text-slate-400 mt-0.5 block">6.5° Downward Drop</span>
                 </button>
 
                 <button
+                  data-testid="preset-unstable-anchor"
+                  disabled={!canControl}
                   onClick={() => {
                     setSimBowArm(172.0)
                     setSimDrawElbow(125.0)
@@ -1634,7 +1672,10 @@ export default function PoseAnalysisPage() {
                     setSimDeflection(3.5)
                     setSimHoldDuration(3.5)
                   }}
-                  className="p-3 bg-navy-950 hover:bg-navy-800 border border-rose-500/30 hover:border-rose-500/60 rounded-xl text-left transition-all group"
+                  className={cn(
+                    "p-3 bg-navy-950 border border-rose-500/30 rounded-xl text-left transition-all group",
+                    canControl ? "hover:bg-navy-800 hover:border-rose-500/60 cursor-pointer" : "opacity-60 cursor-not-allowed"
+                  )}
                 >
                   <span className="text-xs font-black text-rose-400 block">Unstable Anchor</span>
                   <span className="text-[11px] text-slate-400 mt-0.5 block">&gt; 4px Tremor, Low Elbow</span>
@@ -1652,13 +1693,18 @@ export default function PoseAnalysisPage() {
                   </span>
                 </div>
                 <input
+                  data-testid="sim-slider-bow-arm"
                   type="range"
                   min="160"
                   max="185"
                   step="0.5"
                   value={simBowArm}
+                  disabled={!canControl}
                   onChange={(e) => setSimBowArm(parseFloat(e.target.value))}
-                  className="w-full accent-gold-500 h-2 bg-navy-950 rounded-lg cursor-pointer"
+                  className={cn(
+                    "w-full accent-gold-500 h-2 bg-navy-950 rounded-lg",
+                    canControl ? "cursor-pointer" : "opacity-50 cursor-not-allowed"
+                  )}
                 />
               </div>
 
@@ -1675,8 +1721,12 @@ export default function PoseAnalysisPage() {
                   max="170"
                   step="0.5"
                   value={simDrawElbow}
+                  disabled={!canControl}
                   onChange={(e) => setSimDrawElbow(parseFloat(e.target.value))}
-                  className="w-full accent-blue-500 h-2 bg-navy-950 rounded-lg cursor-pointer"
+                  className={cn(
+                    "w-full accent-blue-500 h-2 bg-navy-950 rounded-lg",
+                    canControl ? "cursor-pointer" : "opacity-50 cursor-not-allowed"
+                  )}
                 />
               </div>
 
@@ -1693,8 +1743,12 @@ export default function PoseAnalysisPage() {
                   max="10"
                   step="0.1"
                   value={simJitter}
+                  disabled={!canControl}
                   onChange={(e) => setSimJitter(parseFloat(e.target.value))}
-                  className="w-full accent-cyan-500 h-2 bg-navy-950 rounded-lg cursor-pointer"
+                  className={cn(
+                    "w-full accent-cyan-500 h-2 bg-navy-950 rounded-lg",
+                    canControl ? "cursor-pointer" : "opacity-50 cursor-not-allowed"
+                  )}
                 />
               </div>
 
@@ -1711,8 +1765,12 @@ export default function PoseAnalysisPage() {
                   max="15"
                   step="0.1"
                   value={simDeflection}
+                  disabled={!canControl}
                   onChange={(e) => setSimDeflection(parseFloat(e.target.value))}
-                  className="w-full accent-rose-500 h-2 bg-navy-950 rounded-lg cursor-pointer"
+                  className={cn(
+                    "w-full accent-rose-500 h-2 bg-navy-950 rounded-lg",
+                    canControl ? "cursor-pointer" : "opacity-50 cursor-not-allowed"
+                  )}
                 />
               </div>
 
@@ -1729,8 +1787,12 @@ export default function PoseAnalysisPage() {
                   max="5.0"
                   step="0.1"
                   value={simHoldDuration}
+                  disabled={!canControl}
                   onChange={(e) => setSimHoldDuration(parseFloat(e.target.value))}
-                  className="w-full accent-emerald-500 h-2 bg-navy-950 rounded-lg cursor-pointer"
+                  className={cn(
+                    "w-full accent-emerald-500 h-2 bg-navy-950 rounded-lg",
+                    canControl ? "cursor-pointer" : "opacity-50 cursor-not-allowed"
+                  )}
                 />
               </div>
             </div>

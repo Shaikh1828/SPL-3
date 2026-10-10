@@ -53,14 +53,10 @@ export function RapidScorePad({
   const endSubtotal = endScores.reduce((sum, s) => sum + s.points, 0)
   const tensCount = endScores.filter(s => s.points === 10).length
 
-  // Sync selected slot to next available unfilled slot or last slot
+  // Sync selected slot only when changing end or archer
   useEffect(() => {
-    if (arrowsShot < arrowsPerRound) {
-      setSelectedSlotIndex(arrowsShot)
-    } else {
-      setSelectedSlotIndex(arrowsPerRound - 1)
-    }
-  }, [arrowsShot, arrowsPerRound, currentEnd])
+    setSelectedSlotIndex(Math.min(endScores.length, arrowsPerRound - 1))
+  }, [currentEnd, archer?.id, arrowsPerRound])
 
   const handleScoreClick = async (item: typeof SCORE_BUTTONS[0]) => {
     if (!canScore || isSubmitting || !archer) return
@@ -68,16 +64,27 @@ export function RapidScorePad({
 
     const existingScore = endScores[selectedSlotIndex]
     if (existingScore && onUpdateSlotScore) {
-      // Overriding existing slot
+      // Overriding existing slot in place
       await onUpdateSlotScore(existingScore.id, item.points, item.zone, item.isX)
     } else {
       // Appending new arrow score
       await onRecordScore(item.points, item.zone, item.isX)
+      setSelectedSlotIndex((prev) => Math.min(prev + 1, arrowsPerRound - 1))
     }
 
-    // Auto-advance selection to next slot
-    setSelectedSlotIndex((prev) => Math.min(prev + 1, arrowsPerRound - 1))
     setLastClicked(null)
+  }
+
+  const isBullseyeX = (score: Score | undefined) => {
+    if (!score) return false
+    return (
+      score.image_id === 'x_hit.jpg' ||
+      (score.points === 10 && score.zone === 10 && (
+        (score as any).isX ||
+        score.override_reason?.includes('X') ||
+        score.override_reason?.includes('Bullseye')
+      ))
+    )
   }
 
   const selectedScore = endScores[selectedSlotIndex]
@@ -172,7 +179,7 @@ export function RapidScorePad({
 
                 {isFilled ? (
                   <span className="text-xl font-black font-mono mt-2">
-                    {scoreItem.points === 10 && scoreItem.zone === 10 ? 'X' : scoreItem.points === 0 ? 'M' : scoreItem.points}
+                    {isBullseyeX(scoreItem) ? 'X' : scoreItem.points === 0 ? 'M' : scoreItem.points}
                   </span>
                 ) : isSelected ? (
                   <Target className="w-5 h-5 text-gold-400 animate-spin-slow mt-2" />
@@ -193,7 +200,7 @@ export function RapidScorePad({
           </span>
           {isEditingExisting && (
             <span className="text-xs text-gold-400 font-semibold">
-              Current: {selectedScore.points === 10 && selectedScore.zone === 10 ? 'X' : selectedScore.points} pts
+              Current: {isBullseyeX(selectedScore) ? 'X' : selectedScore.points} pts
             </span>
           )}
         </div>

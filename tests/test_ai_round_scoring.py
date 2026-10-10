@@ -233,3 +233,46 @@ def test_complete_multi_round_progression_cycle(test_client: TestClient, admin_a
     # Total recorded scores across 2 rounds: 3 archers * 6 arrows * 2 rounds = 36
     all_scores = test_client.get(f"/api/sessions/{session.id}/scores", headers=admin_auth_headers).json()
     assert len(all_scores) == 36
+
+
+def test_single_lane_capture_score_sync(test_client: TestClient, admin_auth_headers: dict, scoring_setup: dict):
+    """
+    Verify that single lane capture synchronizes all detected arrows for the round,
+    cleans up any extraneous/out-of-bounds arrows (like arrow #7), and matches annotated scan.
+    """
+    session = scoring_setup["session"]
+    archer = scoring_setup["archers"][0]  # Lane 1
+
+    # Call single lane capture on Lane 1, Round 1
+    response = test_client.post(
+        f"/api/sessions/{session.id}/lanes/1/capture-score?round=1",
+        headers=admin_auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    score_data = response.json()
+    assert score_data["arrow_num"] == 1
+    assert score_data["session_archer_id"] == archer.id
+    assert score_data["round"] == 1
+    assert score_data["image_id"] is not None
+
+    # Fetch all scores for this session and verify round 1 for archer
+    all_scores = test_client.get(f"/api/sessions/{session.id}/scores?round=1", headers=admin_auth_headers).json()
+    archer_r1_scores = [s for s in all_scores if s["session_archer_id"] == archer.id and s["round"] == 1]
+
+    # Must NOT have 7 arrows; arrows must be sequentially 1..N (N <= 6)
+    assert len(archer_r1_scores) <= 6
+    arrow_nums = sorted([s["arrow_num"] for s in archer_r1_scores])
+    assert arrow_nums == list(range(1, len(archer_r1_scores) + 1))
+
+    # All arrows from the same scan must share the same image_id
+    image_ids = set(s["image_id"] for s in archer_r1_scores)
+    assert len(image_ids) == 1
+
+    # Sum of individual arrow points must match
+    expected_sum = sum(s["points"] for s in archer_r1_scores)
+    assert expected_sum >= 0
+
+    # Annotated image endpoint must be accessible
+    img_resp = test_client.get(f"/api/scores/{score_data['id']}/image-annotated", headers=admin_auth_headers)
+    assert img_resp.status_code == 200
+

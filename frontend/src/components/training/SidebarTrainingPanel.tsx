@@ -55,9 +55,13 @@ export function SidebarTrainingPanel({ collapsed }: SidebarTrainingPanelProps) {
 
   // Start polling when mounted
   useEffect(() => {
-    initPolling()
+    if (canTrain) {
+      initPolling()
+    }
     return () => cleanupPolling()
-  }, [])
+  }, [canTrain])
+
+  if (!canTrain) return null
 
   const isRunning = status === 'running'
   const isCompleted = status === 'completed'

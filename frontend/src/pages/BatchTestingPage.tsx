@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { FolderOpen, Play, Activity, CheckCircle, AlertCircle, TrendingUp, Cpu, Award, Upload, Eye } from 'lucide-react'
+import { FolderOpen, Play, Activity, CheckCircle, AlertCircle, TrendingUp, Cpu, Award, Upload, Eye, ShieldAlert } from 'lucide-react'
 import { scoresApi } from '@/api/scores'
 import { sessionsApi } from '@/api/sessions'
 import { useSessionStore } from '@/store/sessionStore'
+import { useAuthStore } from '@/store/authStore'
 import type { SessionArcher, Score } from '@/types'
 import toast from 'react-hot-toast'
 import { cn, getConfidenceColor } from '@/lib/utils'
@@ -24,6 +25,8 @@ interface BatchResult {
 
 export default function BatchTestingPage() {
   const { activeSession } = useSessionStore()
+  const { user } = useAuthStore()
+  const canManage = user?.role === 'admin' || user?.role === 'scorer'
   const [sourceMode, setSourceMode] = useState<'upload' | 'server'>('upload')
   const [directoryPath, setDirectoryPath] = useState('')
   const [selectedFolderFiles, setSelectedFolderFiles] = useState<File[]>([])
@@ -273,6 +276,14 @@ export default function BatchTestingPage() {
 
   return (
     <div className="p-6 h-full flex flex-col space-y-6 overflow-y-auto">
+      {/* Role Alert for Spectators */}
+      {!canManage && (
+        <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-xs flex items-center gap-2.5">
+          <ShieldAlert className="w-4 h-4 shrink-0 text-amber-400" />
+          <span>Spectator Mode: Batch folder target detection is restricted to Admin & Scorer roles.</span>
+        </div>
+      )}
+
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-slate-100 flex items-center gap-2">
@@ -469,7 +480,7 @@ export default function BatchTestingPage() {
           <div className="pt-2 border-t border-navy-750 flex justify-end">
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || !canManage}
               className="btn-primary flex items-center justify-center gap-2 px-6 py-2 disabled:opacity-50"
             >
               {isLoading ? (

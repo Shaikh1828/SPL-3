@@ -124,6 +124,8 @@ export interface Score {
   validated_by_ai: boolean
   confidence?: number
   method?: string
+  override_reason?: string
+  is_x?: boolean
   created_at: string
   updated_at: string
   annotated_image?: string
